@@ -1,11 +1,6 @@
-"""SQLite persistence layer for Helios ITSM Assist.
-
-Single-tier design: the Streamlit UI (``app.py``) imports this module directly.
-There is no API tier and no ORM — the schema is small enough that plain
-``sqlite3`` with row factories is easier to reason about and has zero setup cost.
-
-Schema mirrors ``hackathon/system_design.md`` §6.1. Every ticket also stores the
-AI audit trace as JSON so the workbench can render it without a second table.
+"""
+SQLite persistence layer for IT Ticket Analysis & Resolution Assistant.
+Manages the SQLite database (app.db) and the `tickets` table operations.
 """
 
 from __future__ import annotations
@@ -18,29 +13,29 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Sequence
 
-#: ``app.db`` next to this file unless HELIOS_DB_PATH overrides it.
+#: `app.db` next to this file unless HELIOS_DB_PATH overrides it.
 DB_PATH = Path(os.getenv("HELIOS_DB_PATH") or Path(__file__).with_name("app.db"))
-# Database Helper Functions
+
 STATUSES: tuple[str, ...] = ("Open", "In Progress", "Resolved", "Closed", "Deflected")
 FEEDBACK_STATUSES: tuple[str, ...] = ("useful", "incorrect", "unresolved")
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS tickets (
-    id               TEXT PRIMARY KEY,
-    title            TEXT NOT NULL,
-    description      TEXT NOT NULL DEFAULT '',
-    category         TEXT NOT NULL DEFAULT 'Unclassified',
-    subcategory      TEXT NOT NULL DEFAULT '',
-    priority         TEXT NOT NULL DEFAULT 'P3 - Medium',
-    affected_service TEXT NOT NULL DEFAULT '',
-    assignment_group TEXT NOT NULL DEFAULT 'Service Desk',
-    status           TEXT NOT NULL DEFAULT 'Open',
-    created_at       TEXT NOT NULL,
-    action_steps     TEXT NOT NULL DEFAULT '[]',   -- JSON array
-    resolution_notes TEXT NOT NULL DEFAULT '',
-    feedback_status  TEXT NOT NULL DEFAULT '',
-    feedback_notes   TEXT NOT NULL DEFAULT '',
-    audit_data       TEXT NOT NULL DEFAULT '{}'    -- JSON object
+    id                 TEXT PRIMARY KEY,
+    title              TEXT NOT NULL,
+    description        TEXT NOT NULL DEFAULT '',
+    category           TEXT NOT NULL DEFAULT 'Unclassified',
+    subcategory        TEXT NOT NULL DEFAULT '',
+    priority           TEXT NOT NULL DEFAULT 'P3 - Medium',
+    affected_service   TEXT NOT NULL DEFAULT '',
+    assignment_group   TEXT NOT NULL DEFAULT 'Service Desk',
+    status             TEXT NOT NULL DEFAULT 'Open',
+    created_at         TEXT NOT NULL,
+    action_steps       TEXT NOT NULL DEFAULT '[]',   -- JSON array
+    resolution_notes   TEXT NOT NULL DEFAULT '',
+    feedback_status    TEXT NOT NULL DEFAULT '',
+    feedback_notes     TEXT NOT NULL DEFAULT '',
+    audit_data         TEXT NOT NULL DEFAULT '{}'    -- JSON object
 );
 CREATE INDEX IF NOT EXISTS idx_tickets_status   ON tickets(status);
 CREATE INDEX IF NOT EXISTS idx_tickets_category ON tickets(category);
@@ -54,7 +49,7 @@ _JSON_COLUMNS = ("action_steps", "audit_data")
 # Connection helpers
 # --------------------------------------------------------------------------- #
 def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
@@ -97,7 +92,7 @@ def _row_to_ticket(row: sqlite3.Row) -> dict[str, Any]:
 
 
 def _next_ticket_id(conn: sqlite3.Connection) -> str:
-    """Sequential ``INC000001``-style ids, derived from the highest existing one."""
+    """Sequential `INC000001`-style IDs, derived from the highest existing one."""
     row = conn.execute(
         "SELECT id FROM tickets WHERE id LIKE 'INC%' ORDER BY id DESC LIMIT 1"
     ).fetchone()
@@ -105,12 +100,12 @@ def _next_ticket_id(conn: sqlite3.Connection) -> str:
         return "INC000001"
     try:
         return f"INC{int(row['id'][3:]) + 1:06d}"
-    except ValueError:  # pragma: no cover - defensive against hand-edited rows
+    except ValueError:  
         return f"INC{int(datetime.now().timestamp()):06d}"
 
 
 # --------------------------------------------------------------------------- #
-# CRUD
+# CRUD Operations
 # --------------------------------------------------------------------------- #
 def create_ticket(
     title: str,
@@ -124,11 +119,13 @@ def create_ticket(
     status: str = "Open",
     action_steps: Sequence[str] | None = None,
     resolution_notes: str = "",
+    feedback_status: str = "",
+    feedback_notes: str = "",
     audit_data: dict[str, Any] | None = None,
     ticket_id: str | None = None,
     created_at: str | None = None,
 ) -> str:
-    """Insert one ticket and return its id."""
+    """Insert or replace one ticket and return its id."""
     if not title.strip():
         raise ValueError("title must not be empty")
     if status not in STATUSES:
@@ -139,7 +136,7 @@ def create_ticket(
         new_id = ticket_id or _next_ticket_id(conn)
         conn.execute(
             """
-            INSERT INTO tickets (
+            INSERT OR REPLACE INTO tickets (
                 id, title, description, category, subcategory, priority,
                 affected_service, assignment_group, status, created_at,
                 action_steps, resolution_notes, feedback_status, feedback_notes,
@@ -159,8 +156,8 @@ def create_ticket(
                 created_at or _utc_now(),
                 json.dumps(list(action_steps or [])),
                 resolution_notes,
-                "",
-                "",
+                feedback_status,
+                feedback_notes,
                 json.dumps(audit_data or {}, default=str),
             ),
         )
@@ -168,6 +165,7 @@ def create_ticket(
 
 
 def get_ticket(ticket_id: str) -> dict[str, Any] | None:
+    """Retrieve a single ticket by its unique ID."""
     init_db()
     with connect() as conn:
         row = conn.execute("SELECT * FROM tickets WHERE id = ?", (ticket_id,)).fetchone()
@@ -180,18 +178,24 @@ def get_all_tickets(
     priorities: Iterable[str] | None = None,
     status: str | None = None,
     assignment_group: str | None = None,
+    category: str | None = None, # Backward compatibility helper
     limit: int | None = None,
 ) -> list[dict[str, Any]]:
-    """Return tickets newest-first, filtered by any of the facet values."""
+    """Return tickets newest-first, filtered by facets or optional criteria (FR-07)[cite: 1]."""
     init_db()
+    
+    # Handle single string parameters smoothly for backward compatibility
+    if category and not categories:
+        categories = [category]
+
     clauses: list[str] = []
     params: list[Any] = []
 
     def add_in(column: str, values: Iterable[str] | None) -> None:
-        values = [v for v in (values or []) if v]
-        if values:
-            clauses.append(f"{column} IN ({','.join('?' * len(values))})")
-            params.extend(values)
+        vals = [v for v in (values or []) if v]
+        if vals:
+            clauses.append(f"{column} IN ({','.join('?' * len(vals))})")
+            params.extend(vals)
 
     add_in("category", categories)
     add_in("priority", priorities)
@@ -214,10 +218,12 @@ def get_all_tickets(
         return [_row_to_ticket(r) for r in conn.execute(sql, params).fetchall()]
 
 
-def update_feedback(ticket_id: str, status: str, notes: str = "") -> None:
-    """Record analyst feedback (FR-06) on an existing ticket."""
+def update_feedback(ticket_id: str, status: str, notes: str = "") -> bool:
+    """Record analyst feedback (FR-06) on an existing ticket[cite: 1]."""
     if status not in FEEDBACK_STATUSES:
         raise ValueError(f"unknown feedback status: {status!r}")
+    
+    init_db()
     with connect() as conn:
         cursor = conn.execute(
             "UPDATE tickets SET feedback_status = ?, feedback_notes = ? WHERE id = ?",
@@ -225,6 +231,7 @@ def update_feedback(ticket_id: str, status: str, notes: str = "") -> None:
         )
         if cursor.rowcount == 0:
             raise KeyError(ticket_id)
+        return True
 
 
 def update_resolution(
@@ -234,7 +241,7 @@ def update_resolution(
     action_steps: Sequence[str] | None = None,
     resolution_notes: str | None = None,
 ) -> None:
-    """Apply an AI/drafted resolution to a ticket."""
+    """Apply an AI or analyst drafted resolution to a ticket."""
     updates: list[str] = []
     params: list[Any] = []
     if status is not None:
@@ -251,15 +258,17 @@ def update_resolution(
     if not updates:
         return
     params.append(ticket_id)
+    
+    init_db()
     with connect() as conn:
         conn.execute(f"UPDATE tickets SET {', '.join(updates)} WHERE id = ?", params)
 
 
 # --------------------------------------------------------------------------- #
-# Metrics
+# Metrics & Stats
 # --------------------------------------------------------------------------- #
 def get_stats() -> dict[str, Any]:
-    """Live queue metrics for the admin KPI cards (never hardcoded)."""
+    """Live queue metrics for admin dashboards."""
     init_db()
     with connect() as conn:
         def scalar(sql: str, params: Sequence[Any] = ()) -> int:
@@ -275,7 +284,7 @@ def get_stats() -> dict[str, Any]:
             "SELECT category, COUNT(*) AS n FROM tickets GROUP BY category ORDER BY n DESC"
         ).fetchall()
 
-    attempted = total + deflected  # deflected tickets never became incidents
+    attempted = total + deflected  
     return {
         "total": total,
         "open": open_count,
@@ -289,16 +298,22 @@ def get_stats() -> dict[str, Any]:
 
 
 def reset_db() -> None:
-    """Drop every ticket. Used by ``seed_db.py`` for a clean demo reset."""
+    """Drop every ticket. Used for a clean demo reset."""
     init_db()
     with connect() as conn:
         conn.execute("DELETE FROM tickets")
 
 
-if __name__ == "__main__":  # tiny smoke test: python database.py
+if __name__ == "__main__":  
     reset_db()
-    ticket = create_ticket("VPN drops", "AnyConnect 504 on connect", category="Network & Connectivity")
-    print("created", ticket, "->", get_ticket(ticket)["status"])
-    update_feedback(ticket, "useful", "confirmed")
-    print("stats", get_stats())
-
+    t_id = create_ticket(
+        title="VPN drops",
+        description="AnyConnect 504 on connect",
+        category="Network & Connectivity",
+        priority="P2 - High",
+        action_steps=["Run ipconfig /flushdns", "Restart service"],
+        resolution_notes="Flushed DNS cache."
+    )
+    print("Created ticket:", t_id, "-> Status:", get_ticket(t_id)["status"])
+    update_feedback(t_id, "useful", "Confirmed fix.")
+    print("Database Stats:", get_stats())
