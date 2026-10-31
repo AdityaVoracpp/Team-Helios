@@ -431,7 +431,10 @@ def _step_review() -> None:
             "manually and the ticket will still be queued for an analyst.",
             icon="⚠️",
         )
-    if analysis.get("error"):
+        if analysis.get("error"):
+            with st.expander("Technical details"):
+                st.code(analysis["error"], language="text")
+    elif analysis.get("error"):
         st.error(analysis["error"], icon="🛑")
 
     if classification:
