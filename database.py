@@ -15,7 +15,7 @@ from typing import Any, Iterable, Iterator, Sequence
 
 #: `app.db` next to this file unless HELIOS_DB_PATH overrides it.
 DB_PATH = Path(os.getenv("HELIOS_DB_PATH") or Path(__file__).with_name("app.db"))
-
+#Database Helper Functions
 STATUSES: tuple[str, ...] = ("Open", "In Progress", "Resolved", "Closed", "Deflected")
 FEEDBACK_STATUSES: tuple[str, ...] = ("useful", "incorrect", "unresolved")
 
