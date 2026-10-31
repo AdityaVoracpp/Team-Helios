@@ -24,10 +24,10 @@ ROOT = Path(__file__).resolve().parent
 DATASET_PATH = ROOT / "historical_incidents_200.json"
 
 # --------------------------------------------------------------------------- #
-# Optional RAG subsystem (owned by the RAG lane — import must never break the UI)
+# Optional RAG subsystem (kept separate from UI and SQLite persistence)
 # --------------------------------------------------------------------------- #
-try:  # pragma: no cover - depends on whether rag_service.py has landed
-    import rag_service  # type: ignore
+try:
+    from hackathon import rag_service
 
     RAG_ERROR: str | None = None
 except Exception as exc:  # noqa: BLE001 - any import failure degrades to manual mode
@@ -42,11 +42,18 @@ def get_rag_service() -> Any | None:
     """Instantiate the RAG service once per Streamlit process."""
     if not RAG_AVAILABLE:
         return None
+    return rag_service.RAGService(data_path=str(DATASET_PATH))
+
+
+def _safe_get_rag_service() -> Any | None:
+    """Keep startup/configuration failures in manual mode without caching failure."""
     try:
-        return rag_service.RAGService(data_path=str(DATASET_PATH))
-    except Exception as exc:  # noqa: BLE001 - surfaced in the sidebar, never fatal
+        service = get_rag_service()
+    except Exception as exc:  # noqa: BLE001 - surfaced in the UI, never fatal
         st.session_state["rag_runtime_error"] = f"{type(exc).__name__}: {exc}"
         return None
+    st.session_state.pop("rag_runtime_error", None)
+    return service
 
 
 # --------------------------------------------------------------------------- #
@@ -67,6 +74,20 @@ FALLBACK_GROUP_BY_CATEGORY = {
     "Software & Cloud Applications": "Enterprise Application Support",
     "Security & Compliance": "Security Operations Center",
 }
+FALLBACK_GROUPS = sorted({*FALLBACK_GROUP_BY_CATEGORY.values(), "Service Desk"})
+
+# The RAG classifier uses its design taxonomy. Persist equivalent labels in the
+# historical dataset's taxonomy where there is a direct match.
+RAG_TO_DATASET_CATEGORY = {
+    "Hardware": "Hardware & Endpoints",
+    "Software & Applications": "Software & Cloud Applications",
+}
+PRIORITY_LABEL_BY_CODE = {
+    "P1": "P1 - Critical",
+    "P2": "P2 - High",
+    "P3": "P3 - Medium",
+    "P4": "P4 - Low",
+}
 
 
 @st.cache_data(show_spinner=False)
@@ -82,12 +103,12 @@ def load_taxonomy() -> dict[str, Any]:
     except Exception:  # noqa: BLE001 - corpus is optional for manual triage
         return {
             "categories": FALLBACK_CATEGORIES,
-            "groups": sorted(set(FALLBACK_GROUP_BY_CATEGORY.values())),
+            "groups": FALLBACK_GROUPS,
             "group_by_category": FALLBACK_GROUP_BY_CATEGORY,
         }
 
     categories = sorted({r["category"] for r in records})
-    groups = sorted({r["assignment_group"] for r in records})
+    groups = sorted({r["assignment_group"] for r in records} | {"Service Desk"})
 
     # Majority assignment group per category (the corpus currently maps 1:1).
     tally: dict[str, dict[str, int]] = {}
@@ -100,7 +121,7 @@ def load_taxonomy() -> dict[str, Any]:
 
     return {
         "categories": categories or FALLBACK_CATEGORIES,
-        "groups": groups or sorted(set(FALLBACK_GROUP_BY_CATEGORY.values())),
+        "groups": groups or FALLBACK_GROUPS,
         "group_by_category": group_by_category or FALLBACK_GROUP_BY_CATEGORY,
     }
 
@@ -169,7 +190,7 @@ def _analysis_payload() -> dict[str, Any] | None:
 
 def _run_analysis(payload: dict[str, Any]) -> dict[str, Any]:
     """Call the RAG service if present; otherwise return a manual-mode result."""
-    service = get_rag_service()
+    service = _safe_get_rag_service()
     result: dict[str, Any] = {
         "mode": "manual",
         "classification": None,
@@ -178,6 +199,7 @@ def _run_analysis(payload: dict[str, Any]) -> dict[str, Any]:
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
     if service is None:
+        result["error"] = st.session_state.get("rag_runtime_error") or RAG_ERROR
         return result
 
     try:
@@ -204,9 +226,11 @@ def _run_analysis(payload: dict[str, Any]) -> dict[str, Any]:
 def _resolve_classification(payload: dict[str, Any], analysis: dict[str, Any]) -> tuple[str, str, str, str]:
     """Pick the effective (category, subcategory, priority, group) for the ticket."""
     classification = analysis.get("classification") or {}
-    category = classification.get("category") or payload.get("manual_category") or "Unclassified"
+    raw_category = classification.get("category") or payload.get("manual_category") or "Unclassified"
+    category = RAG_TO_DATASET_CATEGORY.get(raw_category, raw_category)
     subcategory = classification.get("subcategory") or ""
-    priority = classification.get("priority") or payload.get("manual_priority") or "P3 - Medium"
+    raw_priority = classification.get("priority") or payload.get("manual_priority") or "P3 - Medium"
+    priority = PRIORITY_LABEL_BY_CODE.get(raw_priority, raw_priority)
     group = load_taxonomy()["group_by_category"].get(category, "Service Desk")
     return category, subcategory, priority, group
 
@@ -234,6 +258,12 @@ def _save_ticket(payload: dict[str, Any], analysis: dict[str, Any], *, deflect: 
             "source": "employee_intake",
             "agent_mode": analysis["mode"],
             "classification": analysis.get("classification"),
+            "persisted_taxonomy": {
+                "category": category,
+                "subcategory": subcategory,
+                "priority": priority,
+                "assignment_group": group,
+            },
             "deflection": analysis.get("deflection"),
             "error": analysis.get("error"),
             "generated_at": analysis["generated_at"],
@@ -294,8 +324,8 @@ def user_view() -> None:
 
     if analysis["mode"] == "manual":
         st.warning(
-            "**AI service not connected.** `rag_service.py` is not importable yet, so this ticket "
-            "will be created as manual triage and queued for an analyst.",
+            "**AI analysis is unavailable.** This ticket can still be entered with the selected "
+            "manual values and queued for an analyst.",
             icon="⚠️",
         )
     if analysis.get("error"):
@@ -304,7 +334,7 @@ def user_view() -> None:
     if classification:
         c1, c2, c3 = st.columns(3)
         c1.metric("Suggested category", classification["category"])
-        c2.metric("Suggested priority", classification["priority"])
+        c2.metric("Suggested priority", PRIORITY_LABEL_BY_CODE.get(classification["priority"], classification["priority"]))
         c3.metric("Confidence", f"{classification['confidence_score'] * 100:.0f}%")
         st.caption(f"**Why:** {classification.get('reasoning', '—')}")
 
@@ -327,11 +357,12 @@ def user_view() -> None:
 
     st.markdown("#### Next step")
     b1, b2 = st.columns(2)
+    deflection_suggested = bool((analysis.get("deflection") or {}).get("deflection_suggested"))
     deflect = b1.button(
         "✅ This solved my problem",
         type="primary",
         width="stretch",
-        disabled=not similar_tickets,
+        disabled=not similar_tickets or not deflection_suggested,
     )
     submit = b2.button("📨 Submit incident anyway", width="stretch")
 
@@ -454,7 +485,7 @@ def _ticket_detail(ticket: dict[str, Any]) -> None:
 
 def _resolution_panel(ticket: dict[str, Any]) -> None:
     if st.button("Generate resolution playbook", type="primary"):
-        service = get_rag_service()
+        service = _safe_get_rag_service()
         if service is None:
             st.error(st.session_state.get("rag_runtime_error", "RAG service unavailable."))
             return
@@ -540,9 +571,9 @@ def main() -> None:
         )
         st.divider()
         if RAG_AVAILABLE:
-            st.markdown(_pill("RAG service: connected", "ok"), unsafe_allow_html=True)
+            st.markdown(_pill("RAG module: available", "ok"), unsafe_allow_html=True)
         else:
-            st.markdown(_pill("RAG service: not installed", "warn"), unsafe_allow_html=True)
+            st.markdown(_pill("RAG module: unavailable", "warn"), unsafe_allow_html=True)
             st.caption(RAG_ERROR or "rag_service.py missing")
         st.divider()
         st.caption(f"Database: `{db.DB_PATH.name}`")

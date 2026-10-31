@@ -53,6 +53,7 @@ pnpm-debug.log*
 *.db
 *.parquet
 *.pkl
+hackathon/data/embeddings_cache.pkl
 
 # ---- Model and media artifacts ----
 /models/

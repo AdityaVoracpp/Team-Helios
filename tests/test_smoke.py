@@ -3,7 +3,7 @@
 Runs the real Streamlit script through ``streamlit.testing.v1.AppTest`` — no
 server, no browser — and asserts the demo path end to end:
 
-    intake -> analyse (manual mode when RAG is absent) -> submit
+    intake -> analyse (manual mode when RAG credentials are unavailable) -> submit
     -> admin queue -> analyst feedback -> SQLite persists
 
 Run with::
@@ -26,6 +26,8 @@ sys.path.insert(0, str(ROOT))
 # Point the app at a throwaway database before anything imports `database`.
 _TMP_DB = Path(tempfile.mkdtemp(prefix="helios-test-")) / "test.db"
 os.environ["HELIOS_DB_PATH"] = str(_TMP_DB)
+# Keep this app-layer smoke test offline even when a developer has a real key in .env.
+os.environ["OPENAI_API_KEY"] = ""
 
 from streamlit.testing.v1 import AppTest  # noqa: E402
 
