@@ -325,9 +325,13 @@ The classifier must choose one of these five categories:
 
 1.  `Network & Connectivity`
 2.  `Identity & Access`
-3.  `Hardware`
-4.  `Cloud & Infrastructure`
-5.  `Software & Applications`
+3.  `Hardware & Endpoints`
+4.  `Software & Cloud Applications`
+5.  `Security & Compliance`
+
+These are the exact category strings in `historical_incidents_200.json`; the
+Streamlit workbench filters on them, so the classifier must not emit any other
+spelling.
 
 ### 5.2 Classification result
 

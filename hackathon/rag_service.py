@@ -38,19 +38,21 @@ except ImportError:  # pragma: no cover
 
 
 LOGGER = logging.getLogger(__name__)
-DEFAULT_DATA_PATH = "hackathon/data/historical_incidents_200.json"
+DEFAULT_DATA_PATH = "historical_incidents_200.json"
 EMBEDDING_MODEL = "text-embedding-3-small"
 CHAT_MODEL = "gpt-4o-mini"
 TOP_K = 3
 DEFLECTION_THRESHOLD = 0.75
 RESOLUTION_THRESHOLD = 0.70
 SCORING_WEIGHTS = {"vector": 0.50, "bm25": 0.30, "exact_service_match": 0.20}
+# Mirrors the categories present in historical_incidents_200.json exactly.
+# Keep this list in sync with the corpus: the UI filters on these strings.
 ALLOWED_CATEGORIES = {
     "Network & Connectivity",
     "Identity & Access",
-    "Hardware",
-    "Cloud & Infrastructure",
-    "Software & Applications",
+    "Hardware & Endpoints",
+    "Software & Cloud Applications",
+    "Security & Compliance",
 }
 
 
@@ -62,9 +64,9 @@ class ClassificationResult(BaseModel):
     category: Literal[
         "Network & Connectivity",
         "Identity & Access",
-        "Hardware",
-        "Cloud & Infrastructure",
-        "Software & Applications",
+        "Hardware & Endpoints",
+        "Software & Cloud Applications",
+        "Security & Compliance",
     ]
     subcategory: str
     priority: Literal["P1", "P2", "P3", "P4"]
@@ -180,7 +182,7 @@ class RAGService:
         if not self.data_path.is_file():
             raise RAGServiceError(
                 f"Historical incident dataset not found at '{self.data_path}'. "
-                "Provide hackathon/data/historical_incidents_200.json; no sample data was created."
+                "Provide historical_incidents_200.json at the repository root; no sample data was created."
             )
         try:
             raw = json.loads(self.data_path.read_text(encoding="utf-8"))
