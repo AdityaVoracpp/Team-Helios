@@ -20,7 +20,7 @@ from typing import Any, Iterable, Iterator, Sequence
 
 #: ``app.db`` next to this file unless HELIOS_DB_PATH overrides it.
 DB_PATH = Path(os.getenv("HELIOS_DB_PATH") or Path(__file__).with_name("app.db"))
-
+# Database Helper Functions
 STATUSES: tuple[str, ...] = ("Open", "In Progress", "Resolved", "Closed", "Deflected")
 FEEDBACK_STATUSES: tuple[str, ...] = ("useful", "incorrect", "unresolved")
 
@@ -301,3 +301,4 @@ if __name__ == "__main__":  # tiny smoke test: python database.py
     print("created", ticket, "->", get_ticket(ticket)["status"])
     update_feedback(ticket, "useful", "confirmed")
     print("stats", get_stats())
+
