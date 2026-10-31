@@ -6,6 +6,8 @@
 
 ## Current Status (Draft & Active Build)
 - **Status:** **Sprint 0 Complete | Sprint 1 (Core Build) In Progress**
+- **App layer: DONE** — `app.py` (both personas, queue, feedback, audit) + `database.py` (SQLite CRUD) + `seed_db.py` (demo data). Verified by `python tests/test_smoke.py`.
+- **RAG layer: IN PROGRESS** — `rag_service.py` is built separately; until it lands the app runs in a clearly-labelled manual-triage mode.
 - **Dataset:** 200 synthetic enterprise IT incident records generated and validated under [`hackathon/data/historical_incidents_200.json`](hackathon/data/historical_incidents_200.json).
 - **Core Architecture Locked:** Single-tier Python application with **Streamlit** (front-end & app layer), **SQLite** (local persistent database), **Hybrid Retrieval** (BM25 + Dense Vector Similarity), and **OpenAI API** (structured output).
 - **Subsystem Division:** Main UI & Database layer integrated with an isolated **RAG Agent Service** (`rag_service.py`).
@@ -28,7 +30,7 @@ Helios ITSM Assist provides a dual-persona ServiceNow-inspired experience tailor
 - **Contextual Search & Pre-Submission Deflection (FR-02):** Before submission, a real-time radar scans historical incidents and active major outages. If a verified fix or workaround exists, it is displayed immediately. If the user clicks *"This Solved My Problem"*, the ticket is deflected pre-submission, saving IT capacity.
 
 ### 2. Support Operations Workbench (`Admin` Persona — Analyst & Triage)
-- **Executive KPI Dashboard:** Real-time metrics showing Total Incidents, Auto-Classification Accuracy (e.g., 94%), Ticket Deflection Rate (e.g., 28%), and Open Queue Count.
+- **Operational KPI Dashboard:** Every card is computed live from SQLite (total tickets, open queue, deflection rate, share of AI suggestions marked useful) — no hardcoded percentages.
 - **Filterable Incident Queue (FR-07):** Multi-faceted filtering across Category, Priority (`P1` to `P4`), Status (`New`, `In Progress`, `Resolved`), Affected Service, and Assignment Group.
 - **Intelligent Resolution Workbench (FR-03 & FR-04):** Synthesizes step-by-step resolution playbooks grounded directly in resolved historical cases, complete with expandable citation cards showing source ticket IDs (`INC00xxxx`), similarity scores, and verbatim excerpts.
 - **Confidence Guardrail & Fallback (FR-05):** If confidence is $< 70\%$ or physical hardware damage is detected (e.g., coffee spill near USB ports), automated software resolution is suppressed. The system displays an amber warning and routes to Tier 2 escalation without hallucination.
@@ -54,7 +56,7 @@ Helios ITSM Assist provides a dual-persona ServiceNow-inspired experience tailor
 | **Ticket Database** | **REAL** | SQLite database (`app.db`) initialized and persisted locally. |
 | **Historical Precedents** | **REAL** | 200 curated, realistic enterprise IT incidents with symptoms, resolutions, and notes in `hackathon/data/historical_incidents_200.json`. |
 | **Hybrid Retrieval** | **REAL** | In-memory BM25 index + dense vector cosine similarity over the 200 historical incidents. |
-| **LLM Classification & RAG** | **REAL** | Live calls to OpenAI API using Pydantic structured output. |
+| **LLM Classification & RAG** | **PENDING** | `rag_service.py` (classification, hybrid retrieval, playbook synthesis) is owned by the RAG lane. The app imports it opportunistically and degrades to manual triage when it is absent — the banner in the UI says which mode is active. |
 | **Feedback & Audit Trail** | **REAL** | Real-time updates to SQLite records and live JSON inspector. |
 | **User Authentication / RBAC** | **MOCKED** | Security/auth is omitted to maximize hackathon time on core AI capabilities. A simple profile selector switches between `User` and `Admin` personas. |
 
@@ -118,11 +120,20 @@ cp .env.example .env
 # Edit .env and set your OPENAI_API_KEY
 ```
 
-### 3. Run the Application
+### 3. Seed demo data and run
 ```bash
+python seed_db.py          # wipes app.db and loads a 12-ticket demo queue
 streamlit run app.py
 ```
 Open `http://localhost:8501` in your browser.
+
+Use the **Admin (Support Workbench)** persona to see the seeded queue. `Reset demo data` in the sidebar empties the table; `python seed_db.py` restores it.
+
+### 4. Verify the app layer
+```bash
+python tests/test_smoke.py   # intake -> submit -> queue -> feedback -> reset
+```
+The test drives the real Streamlit script through `st.testing.AppTest` against a temporary database, so it never touches your demo data.
 
 ---
 

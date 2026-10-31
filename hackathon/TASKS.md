@@ -1,17 +1,19 @@
-# Task board — 40 : 40 : 20 Team Allocation
+﻿# Task board â€” 40 : 40 : 20 Team Allocation
 
-Sprint 0 deliverable: every task assigned, sized, and ordered. Keep this file current — it is the shared source of truth for who is doing what, and judges read the repo.
+Sprint 0 deliverable: every task assigned, sized, and ordered. Keep this file current â€” it is the shared source of truth for who is doing what, and judges read the repo.
 
 ### Team Roles & Workload Distribution
-- **Member 1 (40% Capacity): Backend & AI/RAG Engineer** — Owns FastAPI endpoints, database models, classification logic, hybrid retrieval engine, RAG resolution synthesis, and audit logs.
-- **Member 2 (40% Capacity): Frontend & UI/UX Engineer** — Owns React + Tailwind UI, ServiceNow Polaris styling, End-User Self-Service portal with live deflection, Admin KPI dashboard, and Analyst Resolution Workbench.
-- **Member 3 (20% Capacity): Data, Evaluation & Pitch Lead (Clock Owner)** — Owns seed dataset curation (40 tickets + 10 KBs), the 3 required worked examples, formal Evaluation Report, README documentation, backup demo video, and submission/pitch.
+- **Member 1 (40% Capacity): Backend & AI/RAG Engineer** â€” Owns FastAPI endpoints, database models, classification logic, hybrid retrieval engine, RAG resolution synthesis, and audit logs.
+- **Member 2 (40% Capacity): Frontend & UI/UX Engineer** â€” Owns React + Tailwind UI, ServiceNow Polaris styling, End-User Self-Service portal with live deflection, Admin KPI dashboard, and Analyst Resolution Workbench.
+- **Member 3 (20% Capacity): Data, Evaluation & Pitch Lead (Clock Owner)** â€” Owns seed dataset curation (40 tickets + 10 KBs), the 3 required worked examples, formal Evaluation Report, README documentation, backup demo video, and submission/pitch.
 
 Status values: `todo`, `doing`, `done`, `cut`.
 
+> **Build note (2026-10-31):** the locked design is **single-tier** â€” Streamlit front-end + `database.py` + `rag_service.py` ([system_design.md](system_design.md)). Rows below that mention FastAPI/React/HTTP endpoints describe the original split; they map to `app.py` (UI) and `database.py` (persistence) in the shipped code. App layer is complete and verified; the RAG lane (`rag_service.py`) is the open dependency.
+
 ---
 
-## Sprint 0 — Setup & Architecture Lock (Target: D-5:00)
+## Sprint 0 â€” Setup & Architecture Lock (Target: D-5:00)
 
 | # | Task | Workload | Owner | Status | Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -27,26 +29,26 @@ Status values: `todo`, `doing`, `done`, `cut`.
 
 ---
 
-## Sprint 1 — Core Build & Integration (D-5:00 → D-1:30)
+## Sprint 1 â€” Core Build & Integration (D-5:00 â†’ D-1:30)
 
 | # | Task | Workload | Owner | Status | Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Backend & AI Lane (40%)** | | | | | |
-| 1.1 | DB setup & seed loader script (`data/seed.json`) | 40% Lane | Member 1 | todo | 1-command reset (`python -m app.seed`) |
-| 1.2 | CRUD API endpoints implementation | 40% Lane | Member 1 | todo | Tickets list, get by ID, filter by category/CI |
+| 1.1 | DB setup & seed loader script (`data/seed.json`) | 40% Lane | Member 1 | done | `database.py` (SQLite) + `seed_db.py`; 1-command reset (`python seed_db.py`) |
+| 1.2 | CRUD API endpoints implementation | 40% Lane | Member 1 | done | Single-tier design: `database.py` CRUD functions called directly by `app.py` (no HTTP tier) |
 | 1.3 | FR-01: AI Ticket Classification & Confidence module | 40% Lane | Member 1 | todo | Predict Category, Subcategory, Urgency, Priority |
 | 1.4 | FR-02: Hybrid Similarity & Duplicate Retrieval | 40% Lane | Member 1 | todo | BM25 keyword + dense vector similarity |
 | 1.5 | FR-03 & FR-04: RAG Resolution Recommender & Citations | 40% Lane | Member 1 | todo | Step-by-step playbook + source ticket excerpts |
 | 1.6 | FR-05: Confidence guardrail & fallback logic | 40% Lane | Member 1 | todo | Flag confidence < 70% for Tier 2 escalation |
 | 1.7 | FR-06 & FR-08: Analyst Feedback & Audit logging APIs | 40% Lane | Member 1 | todo | Store thumbs up/down and full inference trace |
 | **Frontend & UI/UX Lane (40%)** | | | | | |
-| 1.8 | End-User Portal (`/portal`): Intake form with AI autofill | 40% Lane | Member 2 | todo | Auto-suggests Category/Priority as user types |
-| 1.9 | End-User Portal: Pre-submission Contextual Deflection | 40% Lane | Member 2 | todo | Live similar tickets & KBs radar |
-| 1.10 | Admin Workspace (`/workspace`): KPI Dashboard cards | 40% Lane | Member 2 | todo | Volume, Deflection %, Accuracy, Open queue |
-| 1.11 | Admin Workspace: Filterable Incident Queue (FR-07) | 40% Lane | Member 2 | todo | Filter by App, Priority, Category, Status |
-| 1.12 | Analyst Workbench: Ticket view & AI Copilot drawer | 40% Lane | Member 2 | todo | Side-by-side incident data & resolution steps |
-| 1.13 | Analyst Workbench: Citations drawer & Feedback bar | 40% Lane | Member 2 | todo | Source ticket links, thumbs up/down, fallback alert |
-| 1.14 | Audit Trail viewer modal (FR-08) | 40% Lane | Member 2 | todo | Inspect raw JSON and inference rationale |
+| 1.8 | End-User Portal: Intake form with AI autofill | 40% Lane | Member 2 | done | `app.py` User persona; AI autofill activates when `rag_service.py` is importable |
+| 1.9 | End-User Portal: Pre-submission Contextual Deflection | 40% Lane | Member 2 | doing | Radar UI + deflect/create actions shipped; waiting on RAG similarity call |
+| 1.10 | Admin Workspace: KPI Dashboard cards | 40% Lane | Member 2 | done | Live SQLite metrics: total, open queue, deflection rate, useful-feedback share |
+| 1.11 | Admin Workspace: Filterable Incident Queue (FR-07) | 40% Lane | Member 2 | done | Category / priority / status / assignment-group facets, empty state included |
+| 1.12 | Analyst Workbench: Ticket view & AI Copilot drawer | 40% Lane | Member 2 | done | Ticket detail card + resolution panel (renders when RAG available) |
+| 1.13 | Analyst Workbench: Citations drawer & Feedback bar | 40% Lane | Member 2 | done | Citation lines per step, Useful/Incorrect/Unresolved buttons persisting to SQLite |
+| 1.14 | Audit Trail viewer (FR-08) | 40% Lane | Member 2 | done | `st.json` expander over the ticket `audit_data` column |
 | **Data, Evaluation & QA Lane (20%)** | | | | | |
 | 1.15 | Complete 30-40 ticket seed dataset (`seed_tickets.json`) | 20% Lane | Member 3 | todo | Realistic ITIL incidents across 5 categories (KB skipped) |
 | 1.16 | Document 3 worked submission examples | 20% Lane | Member 3 | todo | Outage deflection, SSO fix, hardware fallback |
@@ -58,7 +60,7 @@ Status values: `todo`, `doing`, `done`, `cut`.
 
 ---
 
-## Sprint 2 — Ship, Document & Rehearse (D-1:30 → D-0:00)
+## Sprint 2 â€” Ship, Document & Rehearse (D-1:30 â†’ D-0:00)
 
 | # | Task | Workload | Owner | Status | Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- |
