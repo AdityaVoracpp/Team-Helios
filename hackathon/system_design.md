@@ -16,7 +16,7 @@
 1. **No FastAPI / No Multi-Tier Overhead:** Everything runs in a cohesive, clean Python stack. Streamlit delivers the front-end and application logic directly on port 8501.
 2. **Modular RAG Agent Subsystem:** The RAG and AI logic is encapsulated in an isolated module: `rag_service.py`. This module is built by a dedicated RAG Agent and called directly by the Streamlit app.
 3. **Database:** Standard **SQLite** (`app.db`) accessed directly via Python (`sqlite3` / `pydantic`). Zero network latency, zero setup risk.
-4. **Pre-Generated Dataset:** 200 realistic, curated enterprise incident records already live at [`hackathon/data/historical_incidents_200.json`](hackathon/data/historical_incidents_200.json).
+4. **Pre-Generated Dataset:** 200 realistic, curated enterprise incident records already live at [`historical_incidents_200.json`](historical_incidents_200.json).
 5. **No Auth / 2 Personas:** Security/auth is omitted to keep 100% focus on the AI assistant capabilities. A simple profile selector in the top bar / sidebar toggles between:
    - **`User` (Employee Self-Service):** Intake form, AI auto-fill, pre-submission deflection radar.
    - **`Admin` (Admin + Resolver Combined):** KPI metrics, filterable incident queue (FR-07), resolution workbench (FR-03/04), low-confidence fallback (FR-05), feedback bar (FR-06), and audit log viewer (FR-08).
@@ -40,7 +40,7 @@
 
 ---
 
-## 3. Dataset Specification (`hackathon/data/historical_incidents_200.json`)
+## 3. Dataset Specification (`historical_incidents_200.json`)
 
 The dataset contains 200 rich, realistic enterprise tickets with this exact 14-field schema:
 ```json
@@ -70,6 +70,22 @@ The dataset contains 200 rich, realistic enterprise tickets with this exact 14-f
   "feedback_notes": "Verified resolution for remote employee VPN issues."
 }
 ```
+
+---
+
+## 3.1 Canonical taxonomy (source of truth: the corpus itself)
+
+The 200 records collapse to five categories, and the subcategory is **constant within each category** — worth knowing before any accuracy claim, because "subcategory" carries no discriminative signal in this dataset.
+
+| Category (40 records each) | Subcategory (constant) | Default assignment group | Priority mix (P1/P2/P3/P4) |
+| :--- | :--- | :--- | :--- |
+| `Network & Connectivity` | VPN Client | Network Operations | 4 / 14 / 19 / 3 |
+| `Identity & Access` | Single Sign-On (SSO) | Identity & Access Management | 7 / 18 / 13 / 2 |
+| `Hardware & Endpoints` | Workstation Peripherals | Desktop & End User Support | 2 / 17 / 19 / 2 |
+| `Software & Cloud Applications` | Email & Collaboration | Enterprise Application Support | 4 / 17 / 15 / 4 |
+| `Security & Compliance` | Endpoint Protection | Security Operations Center | 13 / 14 / 10 / 3 |
+
+The Streamlit app reads this list from `historical_incidents_200.json` at startup (`load_taxonomy()` in `app.py`) rather than hardcoding it, so the UI cannot drift from the corpus. `rag_service.py` must emit exactly these strings.
 
 ---
 
@@ -125,7 +141,7 @@ class ResolutionResult(BaseModel):
     audit_trace: Dict[str, Any]  # captures prompt info, candidate IDs, raw response
 
 class RAGService:
-    def __init__(self, data_path: str = "hackathon/data/historical_incidents_200.json"):
+    def __init__(self, data_path: str = "historical_incidents_200.json"):
         """Loads historical incidents and initializes BM25 + Vector embedding index."""
         ...
 
@@ -157,7 +173,7 @@ You are building the AI and Retrieval-Augmented Generation (RAG) service module 
 Implement a single, self-contained Python file `rag_service.py` that loads historical enterprise IT incidents, indexes them using hybrid retrieval, and interacts with OpenAI API using structured outputs.
 
 ### 2. Historical Incident Corpus
-- File location: `hackathon/data/historical_incidents_200.json`
+- File location: `historical_incidents_200.json`
 - Contains 200 resolved tickets with fields: `id`, `title`, `description`, `symptoms`, `category`, `subcategory`, `priority`, `affected_service`, `action_steps`, `resolution_notes`.
 
 ### 3. Required Methods in `RAGService`
@@ -168,7 +184,9 @@ Implement a single, self-contained Python file `rag_service.py` that loads histo
    - Build a dense vector cache using OpenAI `text-embedding-3-small` (or normalized numpy cosine vectors with an on-disk cache `data/embeddings_cache.pkl` so you only embed once!).
 
 2. **`classify_ticket(title: str, description: str, affected_service: str = None) -> ClassificationResult`**:
-   - Classify into one of 5 categories: `Network & Connectivity`, `Identity & Access`, `Hardware`, `Cloud & Infrastructure`, `Software & Applications`.
+   - Classify into one of these 5 categories — **use these exact strings, they are the ones present in the corpus and the ones the UI renders**:
+     `Network & Connectivity`, `Identity & Access`, `Hardware & Endpoints`, `Software & Cloud Applications`, `Security & Compliance`.
+     (An earlier draft of this spec said `Hardware` / `Cloud & Infrastructure` / `Software & Applications`; those names do not exist in `historical_incidents_200.json` and must not be emitted.)
    - Return `category`, `subcategory`, `priority` (`P1` to `P4`), `urgency`, `confidence_score` (0.0 to 1.0), and `reasoning`.
    - Use OpenAI client with Pydantic structured output (`client.beta.chat.completions.parse` or schema function calling).
 
@@ -218,7 +236,7 @@ Implement a single, self-contained Python file `rag_service.py` that loads histo
    - Real-time Deflection Radar: calls `rag_service.find_similar_and_deflect(...)`. Shows matching resolved issue + workaround.
    - Buttons: *"This Solved My Problem"* (deflects ticket) vs. *"Submit Incident Anyway"* (inserts into `tickets` table).
 3. **If Persona == `Admin (Support Workbench)`**:
-   - KPI metric cards: Total Tickets, 94% Auto-Accuracy, 28% Deflection Rate, Open Queue.
+   - KPI metric cards: Total Tickets, Open Queue, Deflection Rate, Useful-Feedback Share — all computed live from SQLite via `database.get_stats()`. No hardcoded percentages anywhere in the UI.
    - Incident Queue with faceted filters: Category, Priority, Status, Assignment Group.
    - Selected ticket details + **AI Resolution Assistant**:
      - Calls `rag_service.recommend_resolution(...)`.

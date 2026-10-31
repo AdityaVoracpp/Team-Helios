@@ -1,16 +1,18 @@
 # Hackathon rules — canonical capture
 
-Status: **BRIEF CAPTURED.** Theme/problem statement still `OPEN`. This file overrides every other assumption in this workspace.
+Status: **BRIEF LOCKED.** Theme and problem statement captured from official brief.
 
-Event: One-day AI-engineering hackathon, three sprints
+Event: HCLTech | Future Ready AI Engineer Hackathon
+Use case: Intelligent IT Ticket Analysis and Resolution Assistant
+Industry: Enterprise IT / Service Management
 Format: Sprint 0 planning → Sprint 1 core dev → Sprint 2 refine, submit, demo
 Total time: ~5-6.5 hours (S0 1-1.5h, S1 3-4h, S2 1h)
-Team: parallel backend + frontend lanes
+Team: 3 members (40% Backend/AI, 40% Frontend/UX, 20% Data/Evaluation/Pitch)
 My role: hands-on build partner plus strategy
 
 ## Theme
 
-- **OPEN — problem statement not yet provided.** Everything in Sprint 0 depends on this; do not start ideating before it arrives.
+- **LOCKED:** Intelligent IT Ticket Analysis and Resolution Assistant (Enterprise IT / Service Management). Analyze incoming tickets, identify similar historical cases, recommend evidence-backed resolutions, provide deflection & confidence fallbacks, and capture feedback/audit trails (FR-01 to FR-08).
 
 ## Judging
 

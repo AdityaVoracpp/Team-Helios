@@ -1,4 +1,79 @@
-.venv/
+# ---- OS ----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- Editors ----
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+
+# ---- Secrets and environment ----
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+secrets.json
+
+# ---- Python ----
 __pycache__/
-*.pyc
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# ---- Node / JS ----
+node_modules/
+.next/
+out/
+.vite/
+coverage/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# ---- Data ----
+# Seed fixtures stay tracked; raw inputs, caches, and uploads do not.
+/data/raw/
+/data/cache/
+/data/uploads/
+*.sqlite
+*.sqlite3
+*.db
+*.parquet
+*.pkl
+
+# ---- Model and media artifacts ----
+/models/
+artifacts/
+*.onnx
+*.pt
+*.pth
+*.safetensors
+*.ckpt
+
+# ---- Logs ----
+*.log
+logs/
+
+# ---- Local agent and tooling config ----
+.dsh/
+.claude/
+.cursor/
+.aider*
+
+# ---- Deployment cruft ----
+.vercel/
+.netlify/
+.aws-sam/
