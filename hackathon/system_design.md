@@ -73,6 +73,22 @@ The dataset contains 200 rich, realistic enterprise tickets with this exact 14-f
 
 ---
 
+## 3.1 Canonical taxonomy (source of truth: the corpus itself)
+
+The 200 records collapse to five categories, and the subcategory is **constant within each category** — worth knowing before any accuracy claim, because "subcategory" carries no discriminative signal in this dataset.
+
+| Category (40 records each) | Subcategory (constant) | Default assignment group | Priority mix (P1/P2/P3/P4) |
+| :--- | :--- | :--- | :--- |
+| `Network & Connectivity` | VPN Client | Network Operations | 4 / 14 / 19 / 3 |
+| `Identity & Access` | Single Sign-On (SSO) | Identity & Access Management | 7 / 18 / 13 / 2 |
+| `Hardware & Endpoints` | Workstation Peripherals | Desktop & End User Support | 2 / 17 / 19 / 2 |
+| `Software & Cloud Applications` | Email & Collaboration | Enterprise Application Support | 4 / 17 / 15 / 4 |
+| `Security & Compliance` | Endpoint Protection | Security Operations Center | 13 / 14 / 10 / 3 |
+
+The Streamlit app reads this list from `hackathon/data/historical_incidents_200.json` at startup (`load_taxonomy()` in `app.py`) rather than hardcoding it, so the UI cannot drift from the corpus. `rag_service.py` must emit exactly these strings.
+
+---
+
 ## 4. Contract for the Separate RAG Agent (`rag_service.py`)
 
 The main Streamlit application communicates with the RAG subsystem via a clean, self-contained Python file named `rag_service.py`.
@@ -168,7 +184,9 @@ Implement a single, self-contained Python file `rag_service.py` that loads histo
    - Build a dense vector cache using OpenAI `text-embedding-3-small` (or normalized numpy cosine vectors with an on-disk cache `data/embeddings_cache.pkl` so you only embed once!).
 
 2. **`classify_ticket(title: str, description: str, affected_service: str = None) -> ClassificationResult`**:
-   - Classify into one of 5 categories: `Network & Connectivity`, `Identity & Access`, `Hardware`, `Cloud & Infrastructure`, `Software & Applications`.
+   - Classify into one of these 5 categories — **use these exact strings, they are the ones present in the corpus and the ones the UI renders**:
+     `Network & Connectivity`, `Identity & Access`, `Hardware & Endpoints`, `Software & Cloud Applications`, `Security & Compliance`.
+     (An earlier draft of this spec said `Hardware` / `Cloud & Infrastructure` / `Software & Applications`; those names do not exist in `historical_incidents_200.json` and must not be emitted.)
    - Return `category`, `subcategory`, `priority` (`P1` to `P4`), `urgency`, `confidence_score` (0.0 to 1.0), and `reasoning`.
    - Use OpenAI client with Pydantic structured output (`client.beta.chat.completions.parse` or schema function calling).
 

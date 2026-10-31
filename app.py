@@ -60,7 +60,7 @@ FALLBACK_CATEGORIES = [
     "Security & Compliance",
 ]
 PRIORITIES = ["P1 - Critical", "P2 - High", "P3 - Medium", "P4 - Low"]
-GROUP_BY_CATEGORY = {
+FALLBACK_GROUP_BY_CATEGORY = {
     "Network & Connectivity": "Network Operations",
     "Identity & Access": "Identity & Access Management",
     "Hardware & Endpoints": "Desktop & End User Support",
@@ -70,15 +70,39 @@ GROUP_BY_CATEGORY = {
 
 
 @st.cache_data(show_spinner=False)
-def load_taxonomy() -> tuple[list[str], list[str]]:
-    """Return ``(categories, assignment_groups)`` present in the incident corpus."""
+def load_taxonomy() -> dict[str, Any]:
+    """Derive categories, assignment groups and their mapping from the corpus.
+
+    Read from data rather than hardcoded so the UI can never drift from the
+    dataset or from what ``rag_service.py`` classifies against. Falls back to
+    the canonical lists when the corpus is unavailable.
+    """
     try:
         records = json.loads(DATASET_PATH.read_text(encoding="utf-8"))
-        categories = sorted({r["category"] for r in records})
-        groups = sorted({r["assignment_group"] for r in records})
-        return categories or FALLBACK_CATEGORIES, groups
     except Exception:  # noqa: BLE001 - corpus is optional for manual triage
-        return FALLBACK_CATEGORIES, sorted(set(GROUP_BY_CATEGORY.values()))
+        return {
+            "categories": FALLBACK_CATEGORIES,
+            "groups": sorted(set(FALLBACK_GROUP_BY_CATEGORY.values())),
+            "group_by_category": FALLBACK_GROUP_BY_CATEGORY,
+        }
+
+    categories = sorted({r["category"] for r in records})
+    groups = sorted({r["assignment_group"] for r in records})
+
+    # Majority assignment group per category (the corpus currently maps 1:1).
+    tally: dict[str, dict[str, int]] = {}
+    for record in records:
+        bucket = tally.setdefault(record["category"], {})
+        bucket[record["assignment_group"]] = bucket.get(record["assignment_group"], 0) + 1
+    group_by_category = {
+        category: max(counts, key=counts.get) for category, counts in tally.items()
+    }
+
+    return {
+        "categories": categories or FALLBACK_CATEGORIES,
+        "groups": groups or sorted(set(FALLBACK_GROUP_BY_CATEGORY.values())),
+        "group_by_category": group_by_category or FALLBACK_GROUP_BY_CATEGORY,
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -183,7 +207,7 @@ def _resolve_classification(payload: dict[str, Any], analysis: dict[str, Any]) -
     category = classification.get("category") or payload.get("manual_category") or "Unclassified"
     subcategory = classification.get("subcategory") or ""
     priority = classification.get("priority") or payload.get("manual_priority") or "P3 - Medium"
-    group = GROUP_BY_CATEGORY.get(category, "Service Desk")
+    group = load_taxonomy()["group_by_category"].get(category, "Service Desk")
     return category, subcategory, priority, group
 
 
@@ -221,7 +245,7 @@ def _save_ticket(payload: dict[str, Any], analysis: dict[str, Any], *, deflect: 
 
 
 def user_view() -> None:
-    categories, _ = load_taxonomy()
+    categories = load_taxonomy()["categories"]
     st.subheader("Report an issue")
     st.caption(
         "Describe the problem in your own words. The assistant checks it against past incidents "
@@ -325,7 +349,8 @@ def user_view() -> None:
 # Admin persona — queue, workbench, feedback, audit
 # --------------------------------------------------------------------------- #
 def _queue_filters() -> tuple[list[str], list[str], str, str]:
-    categories, groups = load_taxonomy()
+    taxonomy = load_taxonomy()
+    categories, groups = taxonomy["categories"], taxonomy["groups"]
     stats = db.get_stats()
     live_categories = sorted(stats["by_category"]) or categories
 

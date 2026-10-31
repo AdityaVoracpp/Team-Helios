@@ -11,6 +11,8 @@ One line per lasting decision: date, decision, reason. Append; do not rewrite hi
 | 2026-10-31 | Taxonomy, priority and assignment-group options are read from the 200-record corpus at startup, never hardcoded | The corpus uses `Hardware & Endpoints` / `Software & Cloud Applications` / `Security & Compliance`, which differ from the 5 category names in `system_design.md` §5; deriving from data prevents silent UI/LLM drift |
 | 2026-10-31 | KPI cards compute from SQLite on every rerun; no hardcoded accuracy/deflection percentages anywhere | Judges ask how a number was measured; a live query is defensible, a placeholder is not |
 | 2026-10-31 | `app.py` imports `rag_service.py` optionally and falls back to manual triage with a visible banner | The RAG module is built in a separate lane; the demo path must never break while it is missing |
+| 2026-10-31 | `system_design.md` §5 corrected to the corpus taxonomy (`Hardware & Endpoints`, `Software & Cloud Applications`, `Security & Compliance`); old names deleted | The RAG agent is specced from that file; emitting categories the corpus and UI do not contain would silently break filtering and retrieval labels |
+| 2026-10-31 | Category → assignment-group mapping is derived from the corpus (majority group) instead of a hardcoded dict | One less place to drift if the dataset is re-curated; falls back to the canonical mapping if the corpus is unreadable |
 
 ## Open decisions
 

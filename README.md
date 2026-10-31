@@ -96,8 +96,8 @@ Helios ITSM Assist provides a dual-persona ServiceNow-inspired experience tailor
 ## How to Run Locally
 
 ### 1. Prerequisites
-- Python 3.10 or higher
-- An OpenAI API key
+- Python 3.10–3.12 (verified on 3.12.10)
+- An OpenAI API key — only needed once `rag_service.py` lands; the app layer runs without it
 
 ### 2. Setup & Installation
 ```bash
@@ -145,7 +145,7 @@ The test drives the real Streamlit script through `st.testing.AppTest` against a
 | **Database** | **SQLite** | Zero-latency, zero-configuration local ACID storage; stores live demo tickets and audit traces. |
 | **Retrieval Engine** | **BM25 + FAISS / NumPy Cosine** | Hybrid search combining exact keyword/error code matching with dense semantic similarity. |
 | **AI / LLM** | **OpenAI API (GPT-4o-mini)** | Strict JSON schema output via Pydantic; deterministic response times < 1.8s. |
-| **Data Corpus** | **200 Curated Incidents** | Covers 5 enterprise categories (Network, Identity, Hardware, Cloud, Apps). |
+| **Data Corpus** | **200 Curated Incidents** | 5 categories × 40 records: Network & Connectivity, Identity & Access, Hardware & Endpoints, Software & Cloud Applications, Security & Compliance. Subcategory is constant per category, so it is reported but not claimed as a prediction win. |
 
 ---
 
