@@ -21,7 +21,7 @@ import database as db
 load_dotenv()
 
 ROOT = Path(__file__).resolve().parent
-DATASET_PATH = ROOT / "hackathon" / "data" / "historical_incidents_200.json"
+DATASET_PATH = ROOT / "historical_incidents_200.json"
 
 # --------------------------------------------------------------------------- #
 # Optional RAG subsystem (owned by the RAG lane — import must never break the UI)

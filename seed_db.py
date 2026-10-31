@@ -20,7 +20,7 @@ from pathlib import Path
 import database as db
 
 ROOT = Path(__file__).resolve().parent
-DATASET = ROOT / "hackathon" / "data" / "historical_incidents_200.json"
+DATASET = ROOT / "historical_incidents_200.json"
 
 #: Categories whose records we promote into the live queue, and how many each.
 QUEUE_PLAN = {

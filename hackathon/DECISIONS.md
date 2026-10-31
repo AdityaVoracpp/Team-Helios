@@ -13,6 +13,7 @@ One line per lasting decision: date, decision, reason. Append; do not rewrite hi
 | 2026-10-31 | `app.py` imports `rag_service.py` optionally and falls back to manual triage with a visible banner | The RAG module is built in a separate lane; the demo path must never break while it is missing |
 | 2026-10-31 | `system_design.md` §5 corrected to the corpus taxonomy (`Hardware & Endpoints`, `Software & Cloud Applications`, `Security & Compliance`); old names deleted | The RAG agent is specced from that file; emitting categories the corpus and UI do not contain would silently break filtering and retrieval labels |
 | 2026-10-31 | Category → assignment-group mapping is derived from the corpus (majority group) instead of a hardcoded dict | One less place to drift if the dataset is re-curated; falls back to the canonical mapping if the corpus is unreadable |
+| 2026-10-31 | Canonical corpus lives at the repo root (`historical_incidents_200.json/.csv`); duplicate copies under `hackathon/data/` deleted | One file per format, one path in every reference; `hackathon/` holds planning docs only. `rag_service.py` must default to the root path |
 
 ## Open decisions
 

@@ -16,7 +16,7 @@
 1. **No FastAPI / No Multi-Tier Overhead:** Everything runs in a cohesive, clean Python stack. Streamlit delivers the front-end and application logic directly on port 8501.
 2. **Modular RAG Agent Subsystem:** The RAG and AI logic is encapsulated in an isolated module: `rag_service.py`. This module is built by a dedicated RAG Agent and called directly by the Streamlit app.
 3. **Database:** Standard **SQLite** (`app.db`) accessed directly via Python (`sqlite3` / `pydantic`). Zero network latency, zero setup risk.
-4. **Pre-Generated Dataset:** 200 realistic, curated enterprise incident records already live at [`hackathon/data/historical_incidents_200.json`](hackathon/data/historical_incidents_200.json).
+4. **Pre-Generated Dataset:** 200 realistic, curated enterprise incident records already live at [`historical_incidents_200.json`](historical_incidents_200.json).
 5. **No Auth / 2 Personas:** Security/auth is omitted to keep 100% focus on the AI assistant capabilities. A simple profile selector in the top bar / sidebar toggles between:
    - **`User` (Employee Self-Service):** Intake form, AI auto-fill, pre-submission deflection radar.
    - **`Admin` (Admin + Resolver Combined):** KPI metrics, filterable incident queue (FR-07), resolution workbench (FR-03/04), low-confidence fallback (FR-05), feedback bar (FR-06), and audit log viewer (FR-08).
@@ -40,7 +40,7 @@
 
 ---
 
-## 3. Dataset Specification (`hackathon/data/historical_incidents_200.json`)
+## 3. Dataset Specification (`historical_incidents_200.json`)
 
 The dataset contains 200 rich, realistic enterprise tickets with this exact 14-field schema:
 ```json
@@ -85,7 +85,7 @@ The 200 records collapse to five categories, and the subcategory is **constant w
 | `Software & Cloud Applications` | Email & Collaboration | Enterprise Application Support | 4 / 17 / 15 / 4 |
 | `Security & Compliance` | Endpoint Protection | Security Operations Center | 13 / 14 / 10 / 3 |
 
-The Streamlit app reads this list from `hackathon/data/historical_incidents_200.json` at startup (`load_taxonomy()` in `app.py`) rather than hardcoding it, so the UI cannot drift from the corpus. `rag_service.py` must emit exactly these strings.
+The Streamlit app reads this list from `historical_incidents_200.json` at startup (`load_taxonomy()` in `app.py`) rather than hardcoding it, so the UI cannot drift from the corpus. `rag_service.py` must emit exactly these strings.
 
 ---
 
@@ -141,7 +141,7 @@ class ResolutionResult(BaseModel):
     audit_trace: Dict[str, Any]  # captures prompt info, candidate IDs, raw response
 
 class RAGService:
-    def __init__(self, data_path: str = "hackathon/data/historical_incidents_200.json"):
+    def __init__(self, data_path: str = "historical_incidents_200.json"):
         """Loads historical incidents and initializes BM25 + Vector embedding index."""
         ...
 
@@ -173,7 +173,7 @@ You are building the AI and Retrieval-Augmented Generation (RAG) service module 
 Implement a single, self-contained Python file `rag_service.py` that loads historical enterprise IT incidents, indexes them using hybrid retrieval, and interacts with OpenAI API using structured outputs.
 
 ### 2. Historical Incident Corpus
-- File location: `hackathon/data/historical_incidents_200.json`
+- File location: `historical_incidents_200.json`
 - Contains 200 resolved tickets with fields: `id`, `title`, `description`, `symptoms`, `category`, `subcategory`, `priority`, `affected_service`, `action_steps`, `resolution_notes`.
 
 ### 3. Required Methods in `RAGService`
