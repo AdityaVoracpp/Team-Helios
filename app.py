@@ -265,33 +265,44 @@ def _suggestions(analysis: dict[str, Any]) -> dict[str, str]:
 
 
 @st.cache_data(show_spinner=False)
-def _service_by_ticket_id() -> dict[str, str]:
-    """Lookup of ``ticket id -> affected service`` from the historical corpus."""
+def _corpus_index() -> dict[str, dict[str, str]]:
+    """``ticket id -> {service, subcategory}`` for the historical corpus."""
     try:
         records = json.loads(DATASET_PATH.read_text(encoding="utf-8"))
     except Exception:  # noqa: BLE001 - suggestion is a convenience, not a dependency
         return {}
-    return {r.get("id", ""): r.get("affected_service", "") for r in records}
+    return {
+        r.get("id", ""): {
+            "service": r.get("affected_service", ""),
+            "subcategory": r.get("subcategory", ""),
+        }
+        for r in records
+    }
+
+
+def _precedent_value(analysis: dict[str, Any], field: str) -> str:
+    """First non-empty ``field`` among the retrieved precedents, best match first."""
+    similar = (analysis.get("deflection") or {}).get("similar_tickets") or []
+    index = _corpus_index()
+    for item in similar:
+        value = index.get(item.get("id", ""), {}).get(field, "")
+        if value:
+            return value
+    return ""
 
 
 def _suggest_service(payload: dict[str, Any], analysis: dict[str, Any]) -> str:
     """Prefer what the employee typed, else the service named by the best precedent."""
-    if payload.get("affected_service"):
-        return payload["affected_service"]
-    similar = (analysis.get("deflection") or {}).get("similar_tickets") or []
-    lookup = _service_by_ticket_id()
-    for item in similar:
-        service = lookup.get(item.get("id", ""), "")
-        if service:
-            return service
-    return ""
+    return payload.get("affected_service") or _precedent_value(analysis, "service")
 
 
 def _seed_review_widgets(payload: dict[str, Any], analysis: dict[str, Any]) -> None:
     """(Re)initialise the editable fields from the latest suggestion."""
     suggestion = _suggestions(analysis)
     st.session_state["review_category"] = suggestion["category"]
-    st.session_state["review_subcategory"] = suggestion["subcategory"]
+    st.session_state["review_subcategory"] = suggestion["subcategory"] or _precedent_value(
+        analysis, "subcategory"
+    )
     st.session_state["review_priority"] = suggestion["priority"]
     st.session_state["review_group"] = suggestion["group"]
     st.session_state["review_service"] = _suggest_service(payload, analysis)
