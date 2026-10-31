@@ -257,7 +257,7 @@ def _suggestions(analysis: dict[str, Any]) -> dict[str, str]:
 
     return {
         "category": category,
-        "subcategory": classification.get("subcategory") or "",
+        "subcategory": _validated_subcategory(category, classification.get("subcategory") or ""),
         "priority": priority,
         "group": taxonomy["group_by_category"].get(category, "Service Desk"),
         "service": "",
@@ -275,14 +275,30 @@ def _corpus_index() -> dict[str, dict[str, str]]:
         r.get("id", ""): {
             "service": r.get("affected_service", ""),
             "subcategory": r.get("subcategory", ""),
+            "category": r.get("category", ""),
         }
         for r in records
     }
 
 
+def _validated_subcategory(category: str, subcategory: str) -> str:
+    """Keep a suggested subcategory only when that pair exists in the corpus."""
+    if not category or not subcategory:
+        return ""
+    known = {
+        record.get("subcategory", "").strip().casefold()
+        for record in _corpus_index().values()
+        if record.get("category", "").strip().casefold() == category.strip().casefold()
+    }
+    return subcategory if subcategory.strip().casefold() in known else ""
+
+
 def _precedent_value(analysis: dict[str, Any], field: str) -> str:
     """First non-empty ``field`` among the retrieved precedents, best match first."""
-    similar = (analysis.get("deflection") or {}).get("similar_tickets") or []
+    deflection = analysis.get("deflection") or {}
+    if not deflection.get("deflection_suggested"):
+        return ""
+    similar = deflection.get("similar_tickets") or []
     index = _corpus_index()
     for item in similar:
         value = index.get(item.get("id", ""), {}).get(field, "")
@@ -428,6 +444,8 @@ def _step_review() -> None:
 
     analysis = payload["analysis"]
     classification = analysis.get("classification")
+    deflection = analysis.get("deflection") or {}
+    deflection_suggested = bool(deflection.get("deflection_suggested"))
 
     with st.container(border=True):
         st.markdown(f"**{payload['title']}**")
@@ -457,7 +475,10 @@ def _step_review() -> None:
         st.caption(f"**Why:** {classification.get('reasoning', '—')}")
 
     st.markdown("#### Review the auto-filled fields")
-    st.caption("Prefilled from the closest historical incidents. Overwrite anything that looks wrong.")
+    if deflection_suggested:
+        st.caption("Review the classification and precedent-based fields; overwrite anything that looks wrong.")
+    else:
+        st.caption("No sufficiently relevant historical match was found. Category and priority are AI triage suggestions; review them before submitting.")
 
     taxonomy = load_taxonomy()
     cat_options = ["Unclassified", *taxonomy["categories"]]
@@ -484,21 +505,28 @@ def _step_review() -> None:
         )
     group = row2[1].selectbox("Assignment group", taxonomy["groups"], key="review_group")
 
-    similar_tickets = (analysis.get("deflection") or {}).get("similar_tickets") or []
+    similar_tickets = deflection.get("similar_tickets") or []
+    if not deflection_suggested:
+        similar_tickets = []
     if similar_tickets:
         _radar(similar_tickets)
+    else:
+        st.info(
+            "No sufficiently relevant historical records were found. "
+            "Submit this incident so the appropriate IT support team can help."
+        )
 
     st.divider()
     b_back, b_deflect, b_submit = st.columns(3)
     back = b_back.button("← Edit details", width="stretch")
-    deflection_suggested = bool((analysis.get("deflection") or {}).get("deflection_suggested"))
     deflect = b_deflect.button(
         "✅ This solved my problem",
         type="primary",
         width="stretch",
         disabled=not similar_tickets or not deflection_suggested,
     )
-    submit = b_submit.button("📨 Submit incident anyway", width="stretch")
+    submit_label = "Submit incident anyway" if similar_tickets else "Submit incident"
+    submit = b_submit.button(submit_label, width="stretch")
 
     values = {
         "category": category,

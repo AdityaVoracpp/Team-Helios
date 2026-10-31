@@ -61,6 +61,22 @@ def _deflection() -> "rag_service.DeflectionResult":
     )
 
 
+def _weak_deflection() -> "rag_service.DeflectionResult":
+    return rag_service.DeflectionResult(
+        deflection_suggested=False,
+        similar_tickets=[
+            rag_service.SimilarTicket(
+                id="INC002589",
+                title="Microsoft 365 desktop license activation error",
+                similarity_score=0.58,
+                status="Resolved",
+                resolution_summary="Cleared expired Office tokens and re-activated the license.",
+                quick_workaround="Check the Microsoft 365 license assignment.",
+            )
+        ],
+    )
+
+
 def _resolution() -> "rag_service.ResolutionResult":
     citation = rag_service.Citation(
         ticket_id="INC002491",
@@ -91,14 +107,28 @@ def _button(at: AppTest, fragment: str):
 
 def main() -> int:
     db.reset_db()
+    def fake_classify(self, title, *_args, **_kwargs):  # noqa: ANN001
+        if "ice cream" in title.casefold():
+            return rag_service.ClassificationResult(
+                category="Hardware & Endpoints",
+                subcategory="Email & Collaboration",
+                priority="P3",
+                urgency="Low",
+                confidence_score=0.80,
+                reasoning="Stubbed unrelated subcategory for the weak-match safety case.",
+            )
+        return _classification()
+
+    def fake_find_similar(self, title, *_args, **_kwargs):  # noqa: ANN001
+        return _weak_deflection() if "ice cream" in title.casefold() else _deflection()
 
     def fake_init(self, data_path=None):  # noqa: ANN001 - mirrors real signature loosely
         self.data_path = data_path
 
     with patch.object(rag_service.RAGService, "__init__", fake_init), patch.object(
-        rag_service.RAGService, "classify_ticket", lambda self, *a, **k: _classification()
+        rag_service.RAGService, "classify_ticket", fake_classify
     ), patch.object(
-        rag_service.RAGService, "find_similar_and_deflect", lambda self, *a, **k: _deflection()
+        rag_service.RAGService, "find_similar_and_deflect", fake_find_similar
     ), patch.object(
         rag_service.RAGService, "recommend_resolution", lambda self, *a, **k: _resolution()
     ):
@@ -173,6 +203,23 @@ def main() -> int:
         assert "category" in overridden["audit_data"]["overrides"], overridden["audit_data"]
         assert overridden["audit_data"]["suggested"]["category"] == "Network & Connectivity"
         print("OK  manual override persisted and recorded alongside the suggestion")
+
+        # ---- weak match: hide unrelated precedent and ask user to submit ----
+        at.text_input[0].set_value("Ice cream melted")
+        at.text_area[0].set_value("The fridge stopped working and the ice cream melted.")
+        at.text_input[1].set_value("")
+        _button(at, "Next").click().run()
+        assert not at.exception, [e.message for e in at.exception]
+        assert any("No sufficiently relevant historical records" in str(item.value) for item in at.info)
+        assert not any("Deflection radar" in str(item.value) for item in at.markdown)
+        assert next(item for item in at.text_input if item.label == "Affected service").value == ""
+        assert next(item for item in at.text_input if item.label == "Subcategory").value == ""
+        _button(at, "Submit incident").click().run()
+        assert not at.exception, [e.message for e in at.exception]
+        unrelated = next(t for t in db.get_all_tickets() if t["title"] == "Ice cream melted")
+        assert unrelated["status"] == "Open", unrelated["status"]
+        assert unrelated["affected_service"] == "", unrelated["affected_service"]
+        print("OK  weak matches are suppressed and the incident is submitted for IT support")
 
     print("\nAll RAG-integration checks passed (LLM stubbed, no network).")
     return 0

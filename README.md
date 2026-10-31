@@ -1,157 +1,142 @@
 # Helios ITSM Assist
 
-> For **enterprise IT support analysts and employees** overwhelmed by **manual triage, duplicate tickets, and slow resolution**, **Helios ITSM Assist** provides **real-time pre-submission deflection, AI classification, and evidence-backed resolution playbooks grounded in historical incidents** so they get **faster answers, resolved duplicates, and traceable guidance with explicit low-confidence fallbacks**.
+Helios ITSM Assist is a Streamlit application for employee IT issue intake and support analyst triage. It classifies reported issues, searches historical incidents for relevant precedents, and presents evidence-backed resolution guidance with confidence and safety guardrails.
 
----
+> **Live Streamlit demo:** Deployment URL pending. Share the deployed app URL to add it here.
 
-## Current Status (Draft & Active Build)
-- **Status:** **Sprint 0 Complete | Sprint 1 (Core Build) In Progress**
-- **App layer: DONE** — `app.py` (both personas, queue, feedback, audit) + `database.py` (SQLite CRUD) + `seed_db.py` (demo data). Verified by `python tests/test_smoke.py`.
-- **RAG layer: IN PROGRESS** — `rag_service.py` is built separately; until it lands the app runs in a clearly-labelled manual-triage mode.
-- **Dataset:** 200 synthetic enterprise IT incident records generated and validated under [`historical_incidents_200.json`](historical_incidents_200.json).
-- **Core Architecture Locked:** Single-tier Python application with **Streamlit** (front-end & app layer), **SQLite** (local persistent database), **Hybrid Retrieval** (BM25 + Dense Vector Similarity), and **OpenAI API** (structured output).
-- **Subsystem Division:** Main UI & Database layer integrated with an isolated **RAG Agent Service** (`rag_service.py`).
+## What it does
 
----
+- **Employee Center:** Collects an issue in a two-step flow and suggests category, subcategory, priority, assignment group, and affected service for review before submission.
+- **Historical incident search:** Uses FAISS dense retrieval, BM25 keyword search, and exact affected-service matching over the incident corpus.
+- **Deflection radar:** Shows relevant resolved incidents when the best match meets the 0.75 similarity threshold. Employees can use a historical resolution or submit an incident for analyst review.
+- **Analyst workbench:** Provides a filterable ticket queue, ticket details, grounded resolution recommendations, citations, feedback controls, and an audit trace.
+- **Confidence and safety guardrails:** Recommendations below 0.70 confidence fall back to human support. Physical damage and other safety-sensitive cases are escalated without troubleshooting instructions.
+- **SQLite persistence:** Stores submitted tickets, resolution and feedback data, and audit information locally.
 
-## Problem
-Enterprise IT support systems receive massive volumes of repetitive tickets involving VPN drops, SSO authentication loops, application errors, and hardware failures. 
+The application suggests triage values and troubleshooting actions; a person remains responsible for reviewing them. It does not perform autonomous remediation or privileged system changes. The persona selector is for the demo and is not authentication or role-based access control.
 
-Manual categorization and duplicate search consumes over 60% of tier-1 support handling time, leading to high MTTR (Mean Time to Resolution) and inconsistent fixes. Existing chatbot solutions frequently hallucinate ungrounded instructions or fail to detect active duplicate incidents before users file tickets.
+## How the RAG flow works
 
----
-
-## What It Does
-
-Helios ITSM Assist provides a dual-persona ServiceNow-inspired experience tailored for both end-users and IT support personnel:
-
-### 1. Employee Center (`User` Persona — Self-Service)
-- **Two-step intake (FR-01):** Step 1 collects the short and detailed description. Step 2 runs the issue against the historical corpus and **pre-fills** category, subcategory, priority, assignment group and affected service, with an explicit confidence score and the model's reasoning. Every pre-filled field stays editable — the employee can override any of it before submitting, and the audit trace records what was suggested versus what was kept.
-- **Contextual Search & Pre-Submission Deflection (FR-02):** Before submission, a real-time radar scans historical incidents and active major outages. If a verified fix or workaround exists, it is displayed immediately. If the user clicks *"This Solved My Problem"*, the ticket is deflected pre-submission, saving IT capacity.
-
-### 2. Support Operations Workbench (`Admin` Persona — Analyst & Triage)
-- **Operational KPI Dashboard:** Every card is computed live from SQLite (total tickets, open queue, deflection rate, share of AI suggestions marked useful) — no hardcoded percentages.
-- **Filterable Incident Queue (FR-07):** Multi-faceted filtering across Category, Priority (`P1` to `P4`), Status (`New`, `In Progress`, `Resolved`), Affected Service, and Assignment Group.
-- **Intelligent Resolution Workbench (FR-03 & FR-04):** Synthesizes step-by-step resolution playbooks grounded directly in resolved historical cases, complete with expandable citation cards showing source ticket IDs (`INC00xxxx`), similarity scores, and verbatim excerpts.
-- **Confidence Guardrail & Fallback (FR-05):** If confidence is $< 70\%$ or physical hardware damage is detected (e.g., coffee spill near USB ports), automated software resolution is suppressed. The system displays an amber warning and routes to Tier 2 escalation without hallucination.
-- **Analyst Feedback Loop (FR-06):** One-click buttons (**Useful** 👍, **Incorrect** 👎, **Unresolved** ❓) allow the reviewer to evaluate the AI's recommendation, immediately updating SQLite and retraining cues.
-- **Audit & Explainability Inspector (FR-08):** In-app expandable JSON viewer capturing raw input, taxonomy predictions, retrieved precedent IDs, prompt/completion metadata, and reviewer decisions.
-
----
-
-## What the AI Does
-
-1. **Classification (FR-01):** Analyzes ticket text against a structured ITIL enterprise taxonomy using strict JSON schema validation.
-2. **Hybrid Precedent Retrieval (FR-02):** Combines lexical BM25 search (for exact error codes like `Error 504`, `Cisco AnyConnect`, `Okta Verify`) with dense semantic vector embeddings scored via rank fusion.
-3. **Playbook Synthesis & Citations (FR-03 & FR-04):** Prompts the LLM with the active incident plus top resolved precedent excerpts to generate an ordered, 3-step action checklist with source citations.
-4. **Guardrail Decision (FR-05):** Automatically suppresses resolution if top precedent similarity is below 70%, outputting an escalation notice.
-5. **Fallback:** If API connectivity fails or times out, the app safely defaults to human escalation without blocking the UI.
-
----
-
-## Real vs. Mocked (Judging Disclosure)
-
-| Capability | Status | Implementation Details |
-| :--- | :--- | :--- |
-| **Ticket Database** | **REAL** | SQLite database (`app.db`) initialized and persisted locally. |
-| **Historical Precedents** | **REAL** | 200 curated, realistic enterprise IT incidents with symptoms, resolutions, and notes in `historical_incidents_200.json`. |
-| **Hybrid Retrieval** | **REAL** | In-memory BM25 index + dense vector cosine similarity over the 200 historical incidents. |
-| **LLM Classification & RAG** | **PENDING** | `rag_service.py` (classification, hybrid retrieval, playbook synthesis) is owned by the RAG lane. The app imports it opportunistically and degrades to manual triage when it is absent — the banner in the UI says which mode is active. |
-| **Feedback & Audit Trail** | **REAL** | Real-time updates to SQLite records and live JSON inspector. |
-| **User Authentication / RBAC** | **MOCKED** | Security/auth is omitted to maximize hackathon time on core AI capabilities. A simple profile selector switches between `User` and `Admin` personas. |
-
----
+1. The user describes an IT issue and optionally names the affected service.
+2. LangChain calls OpenAI for structured ticket classification and embeddings.
+3. Retrieval combines normalized FAISS cosine similarity, normalized BM25 scores, and exact service matching using weights of **0.50**, **0.30**, and **0.20**. The top three incidents are considered.
+4. The deflection radar suggests self-service only when the top match scores at least **0.75**.
+5. For analyst recommendations, the service uses resolved historical incidents as its evidence. Generated actions must cite retrieved source tickets and excerpts. If evidence is insufficient, confidence is below **0.70**, or the issue is safety-sensitive, the service returns a human-support fallback.
 
 ## Architecture
 
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        STREAMLIT WEB APPLICATION                       │
-│                        (Single Python Process)                         │
-│  ┌─────────────────────────────┐     ┌──────────────────────────────┐  │
-│  │    User Persona (Portal)    │     │   Admin Persona (Workbench)  │  │
-│  │ - Intake + Live AI Autofill │     │ - KPI Dashboard & Queue (FR07)│  │
-│  │ - Pre-submission Deflection │     │ - RAG Playbook & Citations   │  │
-│  └──────────────┬──────────────┘     │ - Fallback & Feedback (FR06) │  │
-│                 │                    │ - Audit Inspector (FR08)     │  │
-│                 │                    └──────────────┬───────────────┘  │
-└─────────────────┼───────────────────────────────────┼──────────────────┘
-                  │                                   │
-┌─────────────────▼───────────────────────────────────▼──────────────────┐
-│                          LOCAL STORAGE (SQLite)                        │
-│                 Tickets Table (Metadata, Status, Audit Data)           │
-└───────────────────────────────────┬────────────────────────────────────┘
-                                    │
-┌───────────────────────────────────▼────────────────────────────────────┐
-│                       RAG & AI SERVICE MODULE                          │
-│  - Hybrid Search Engine (BM25 + FAISS / Cosine Semantic Similarity)   │
-│  - 200 Seed Incidents Corpus (historical_incidents_200) │
-│  - OpenAI Structured Output (Classification, Resolution Playbooks)    │
-│  - Confidence Guardrail Gatekeeper (< 70% Fallback Trigger)            │
-└────────────────────────────────────────────────────────────────────────┘
+```text
+Streamlit UI (app.py)
+  ├── Employee intake and analyst workbench
+  ├── RAG service (hackathon/rag_service.py)
+  │     ├── OpenAI classification and embeddings via LangChain
+  │     ├── FAISS + BM25 + exact-service hybrid retrieval
+  │     └── Grounded recommendations, citations, guardrails, audit trace
+  └── SQLite persistence (database.py)
+
+Historical incidents (historical_incidents_200.json)
+  └── Retrieval corpus; generated embeddings are cached locally
 ```
 
----
+## Technology
 
-## How to Run Locally
+| Area | Technology |
+| --- | --- |
+| UI and application | Python, Streamlit |
+| RAG orchestration | LangChain, `langchain-openai` |
+| Chat model | OpenAI `gpt-4o-mini` |
+| Embeddings | OpenAI `text-embedding-3-small` |
+| Retrieval | FAISS and `rank-bm25` |
+| Validation | Pydantic |
+| Application data | SQLite |
+| Configuration | `python-dotenv` |
 
-### 1. Prerequisites
-- Python 3.10–3.12 (verified on 3.12.10)
-- An OpenAI API key — only needed once `rag_service.py` lands; the app layer runs without it
+The historical incident file contains 200 curated records and is used as the RAG corpus. `seed_db.py` derives a small demo queue from that corpus; it does not replace or modify the source dataset.
 
-### 2. Setup & Installation
-```bash
-# Clone the repository
-git clone https://github.com/AdityaVoraCpp/Team-Helios.git
-cd Team-Helios
+## Run locally
 
-# Create and activate a virtual environment
+### Prerequisites
+
+- Python 3.10 or newer
+- An OpenAI API key for classification, embeddings, and resolution generation
+
+### Install and configure
+
+From the repository root, create and activate a virtual environment, then install the project dependencies:
+
+```powershell
 python -m venv .venv
-# On Windows:
-.venv\Scripts\activate
-# On Linux/macOS:
-source .venv/bin/activate
-
-# Install dependencies
+.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-
-# Configure your environment
-cp .env.example .env
-# Edit .env and set your OPENAI_API_KEY
+Copy-Item .env.example .env
 ```
 
-### 3. Seed demo data and run
+On macOS or Linux, activate and copy the environment template with:
+
 ```bash
-python seed_db.py          # wipes app.db and loads a 12-ticket demo queue
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+```
+
+Add your key to `OPENAI_API_KEY` in your local `.env` file. Keep `.env` private; it is ignored by Git. The model defaults are already set in `.env.example`:
+
+```dotenv
+OPENAI_API_KEY=your-key-here
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+OPENAI_CHAT_MODEL=gpt-4o-mini
+```
+
+### Seed the demo queue and start Streamlit
+
+```bash
+python seed_db.py
 streamlit run app.py
 ```
-Open `http://localhost:8501` in your browser.
 
-Use the **Admin (Support Workbench)** persona to see the seeded queue. `Reset demo data` in the sidebar empties the table; `python seed_db.py` restores it.
+Open `http://localhost:8501`. The seed command resets and populates the local SQLite ticket queue. Run it again to restore the demo queue. The first RAG startup may call the embeddings API to build the local cache; subsequent starts can reuse that cache while the corpus and embedding model remain unchanged.
 
-### 4. Verify the app layer
+## Tests
+
+Run the existing smoke, integration, and RAG service test scripts from the repository root:
+
 ```bash
-python tests/test_smoke.py   # intake -> submit -> queue -> feedback -> reset
+python tests/test_smoke.py
+python tests/test_rag_integration.py
+python hackathon/tests/test_rag_service.py
 ```
-The test drives the real Streamlit script through `st.testing.AppTest` against a temporary database, so it never touches your demo data.
 
----
+The RAG integration and service tests stub model calls where applicable. The running application still requires a valid OpenAI key for live AI requests.
 
-## Technical Stack
+## Project layout
 
-| Layer | Choice | Why |
-| :--- | :--- | :--- |
-| **Application & UI** | **Streamlit** | Fast, reactive Python web UI; zero build tools or NodeJS dependencies needed; immediate stateful controls. |
-| **Database** | **SQLite** | Zero-latency, zero-configuration local ACID storage; stores live demo tickets and audit traces. |
-| **Retrieval Engine** | **BM25 + FAISS / NumPy Cosine** | Hybrid search combining exact keyword/error code matching with dense semantic similarity. |
-| **AI / LLM** | **OpenAI API (GPT-4o-mini)** | Strict JSON schema output via Pydantic; latency target < 2 s, to be measured once the RAG lane lands. |
-| **Data Corpus** | **200 Curated Incidents** | 5 categories × 40 records: Network & Connectivity, Identity & Access, Hardware & Endpoints, Software & Cloud Applications, Security & Compliance. Subcategory is constant per category, so it is reported but not claimed as a prediction win. |
+```text
+.
+├── app.py                          # Streamlit employee and analyst interfaces
+├── database.py                     # SQLite schema and ticket operations
+├── seed_db.py                      # Seeds the local demo ticket queue
+├── historical_incidents_200.json   # Historical RAG corpus
+├── hackathon/
+│   ├── rag_service.py              # Classification, retrieval, recommendations
+│   └── tests/test_rag_service.py   # RAG service tests
+├── tests/
+│   ├── test_smoke.py
+│   └── test_rag_integration.py
+├── requirements.txt
+└── .env.example
+```
 
----
+## Project documents
 
-## Project Documentation & Hackathon Governance
-Detailed hackathon governance and evaluation documents live under [`hackathon/`](hackathon/):
-- [`hackathon/RULES.md`](hackathon/RULES.md) — Official brief and judging alignment
-- [`hackathon/DECISIONS.md`](hackathon/DECISIONS.md) — Architecture and design log
-- [`hackathon/TASKS.md`](hackathon/TASKS.md) — Task board and completion status
-- [`hackathon/DEMO-SCRIPT.md`](hackathon/DEMO-SCRIPT.md) — 3-minute pitch and demo narration
+- [RAG design](hackathon/RAG_DESIGN.md)
+- [System design](hackathon/system_design.md)
+- [Hackathon rules](hackathon/RULES.md)
+- [Demo script](hackathon/DEMO-SCRIPT.md)
+
+## Security and limitations
+
+- Never commit `.env`, API keys, or local embedding caches.
+- The demo persona selector does not provide real user authentication or authorization.
+- Recommendations depend on the coverage and quality of the historical incident corpus. When relevant resolved evidence is unavailable, the service should direct the user to human IT support instead of inventing a fix.
+- No ticket is created outside the local application database, and no external ITSM system is modified.

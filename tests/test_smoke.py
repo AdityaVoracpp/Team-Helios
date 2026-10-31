@@ -59,7 +59,7 @@ def main() -> int:
     # ---- step 2 (review auto-filled fields, override manually) -------------------
     at.selectbox[0].set_value("Network & Connectivity")
     at.selectbox[1].set_value("P2 - High")
-    _button(at, "Submit incident anyway").click().run()
+    _button(at, "Submit incident").click().run()
     assert not at.exception, list(at.exception)
 
     rows = db.get_all_tickets()
