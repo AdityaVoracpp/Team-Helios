@@ -42,6 +42,18 @@ DEFAULT_DATA_PATH = "historical_incidents_200.json"
 EMBEDDING_MODEL = "text-embedding-3-small"
 CHAT_MODEL = "gpt-4o-mini"
 TOP_K = 3
+def _drop_blank_openai_env() -> None:
+    """Delete OPENAI_* variables that are present but empty.
+
+    ``OPENAI_BASE_URL=`` in a .env file is exported as an empty string, and the
+    OpenAI SDK reads it as a real base URL rather than "unset" — every request
+    then dies with "Request URL is missing an 'http://' or 'https://' protocol".
+    """
+    for key in ("OPENAI_BASE_URL", "OPENAI_API_BASE"):
+        if key in os.environ and not os.environ[key].strip():
+            os.environ.pop(key, None)
+
+
 DEFLECTION_THRESHOLD = 0.75
 RESOLUTION_THRESHOLD = 0.70
 SCORING_WEIGHTS = {"vector": 0.50, "bm25": 0.30, "exact_service_match": 0.20}
@@ -162,6 +174,7 @@ class RAGService:
     def __init__(self, data_path: str = DEFAULT_DATA_PATH):
         if load_dotenv is not None:
             load_dotenv()
+        _drop_blank_openai_env()
         self.data_path = Path(data_path)
         self.cache_path = self.data_path.parent / "embeddings_cache.pkl"
         self.embedding_model_name = os.getenv("OPENAI_EMBEDDING_MODEL", EMBEDDING_MODEL)
