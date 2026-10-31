@@ -1,6 +1,6 @@
 # Helios ITSM Assist
 
-> For **enterprise IT support analysts and employees** overwhelmed by **manual triage, duplicate tickets, and slow resolution**, **Helios ITSM Assist** provides **real-time pre-submission deflection, AI classification, and evidence-backed resolution playbooks grounded in historical incidents** so they get **instant answers, 30%+ deflection, and drastically reduced MTTR with zero-hallucination guardrails**.
+> For **enterprise IT support analysts and employees** overwhelmed by **manual triage, duplicate tickets, and slow resolution**, **Helios ITSM Assist** provides **real-time pre-submission deflection, AI classification, and evidence-backed resolution playbooks grounded in historical incidents** so they get **faster answers, resolved duplicates, and traceable guidance with explicit low-confidence fallbacks**.
 
 ---
 
@@ -144,7 +144,7 @@ The test drives the real Streamlit script through `st.testing.AppTest` against a
 | **Application & UI** | **Streamlit** | Fast, reactive Python web UI; zero build tools or NodeJS dependencies needed; immediate stateful controls. |
 | **Database** | **SQLite** | Zero-latency, zero-configuration local ACID storage; stores live demo tickets and audit traces. |
 | **Retrieval Engine** | **BM25 + FAISS / NumPy Cosine** | Hybrid search combining exact keyword/error code matching with dense semantic similarity. |
-| **AI / LLM** | **OpenAI API (GPT-4o-mini)** | Strict JSON schema output via Pydantic; deterministic response times < 1.8s. |
+| **AI / LLM** | **OpenAI API (GPT-4o-mini)** | Strict JSON schema output via Pydantic; latency target < 2 s, to be measured once the RAG lane lands. |
 | **Data Corpus** | **200 Curated Incidents** | 5 categories × 40 records: Network & Connectivity, Identity & Access, Hardware & Endpoints, Software & Cloud Applications, Security & Compliance. Subcategory is constant per category, so it is reported but not claimed as a prediction win. |
 
 ---

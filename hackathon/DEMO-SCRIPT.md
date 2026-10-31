@@ -1,32 +1,52 @@
 # Demo script — Helios ITSM Assist
 
-Target duration: 3 minutes. Every beat matches a visible screen action and spoken line.
+Target duration: 3 minutes. Every beat matches a visible screen action and one spoken line.
+
+> **Build state this script reflects (2026-10-31):** single-tier Streamlit app, SQLite persistence,
+> 12 seeded demo tickets, 200-record retrieval corpus. `rag_service.py` is **not wired yet** — the UI
+> says so in a banner. Beats 4 and 5 have an explicit "RAG not ready" fallback; do not improvise AI
+> output that the app does not produce.
 
 ## One-sentence pitch
 
-> For **IT support analysts and enterprise employees** who **suffer from manual ticket triage, duplicate submissions, and slow incident resolution**, **Helios ITSM Assist** provides **real-time pre-submission deflection, AI classification, and evidence-backed resolution playbooks** so they get **instant answers, 30%+ ticket deflection, and drastically reduced MTTR**.
+> For **IT support analysts and enterprise employees** who **lose hours to manual triage, duplicate tickets and slow resolution**, **Helios ITSM Assist** delivers **pre-submission deflection, structured ticket classification and evidence-backed resolution playbooks grounded in historical incidents**, so they get **faster answers with traceable, non-hallucinated guidance**.
 
 ## Beats
 
 | # | Time | Screen action | Spoken line | Failure fallback |
 | :--- | :--- | :--- | :--- | :--- |
-| 1 | 0:00-0:30 | **Admin KPI Dashboard (`/workspace`)**: Show real-time cards (Total Volume, 94.2% Auto-Classification Accuracy, 28% Deflection Rate, MTTR savings). | "Enterprise IT support is overwhelmed by repetitive incidents. Helios automates triage and assists analysts with grounded evidence." | Slide / static screenshot |
-| 2 | 0:30-1:15 | **Employee Center Intake (`/portal`)**: Type "VPN gateway timeout Error 504". Live AI autofill triggers (Category: Network/VPN, Priority: P2). Contextual Search sidebar pops up showing matching major incident and quick workaround. | "Before the user even clicks submit, our pre-submission radar matches existing outages, deflecting up to 30% of incoming tickets immediately." | Pre-typed draft template button |
-| 3 | 1:15-2:15 | **Analyst Resolution Workbench**: Click incident `INC003110` (Okta SSO Loop). Show AI classification confidence badge (94%), ranked historical precedents, synthesized 3-step resolution playbook, and citation links with excerpt highlights. Click "Accept & Mark Useful". | "When an incident does arrive, the analyst gets an evidence-backed resolution playbook with direct citations to historical precedents and approved KBs, complete with a feedback loop." | Pre-cached ticket detail view |
-| 4 | 2:15-2:45 | **Guardrail Fallback (FR-05) & Audit Trail (FR-08)**: Switch to ambiguous hardware ticket (coffee spill). Show amber warning banner: "Low Confidence (52%) — Requires Tier 2 Hardware Escalation". Open Audit Tab showing full JSON trace and prompt/response metadata. | "When evidence is weak or contradictory, Helios never hallucinates; it safely flags low confidence and routes to Tier 2 with complete audit traceability." | Seeded ticket `#3` in queue |
-| 5 | 2:45-3:00 | **Wrap-up & Evaluation**: Highlight evaluation benchmark (tested on 40 enterprise tickets across 5 categories) and prompt judges for questions. | "That's Helios ITSM Assist: intelligent classification, proactive deflection, grounded RAG resolution, and zero-hallucination guardrails." | Summary slide |
+| 1 | 0:00-0:25 | Sidebar → **Admin (Support Workbench)**. Point at the four KPI cards (Total tickets, Open queue, Deflection rate, Useful feedback). | "Every ticket queue starts with triage. These numbers are live from SQLite — not slides." | Screenshot of the workbench |
+| 2 | 0:25-1:05 | Switch to **User (Employee Center)**. Type *"VPN drops with Error 504"* + details, leave category/priority blank, click **Analyze Issue**. | "Before the employee submits anything, Helios reads the ticket and proposes category and priority." | Pre-typed draft ready in a second tab |
+| 3 | 1:05-1:50 | Click **Submit incident anyway** → switch to **Admin** → filter Category = `Network & Connectivity` → open the new ticket. | "It lands in the queue already classified, with the assignment group derived from the category." | Seeded ticket `INC000001` |
+| 4 | 1:50-2:30 | On the ticket: click 👍 **Useful**, then open **🔍 AI audit & explainability** and show the JSON trace. *(If `rag_service.py` has landed: click **Generate resolution playbook** first and show steps + citations.)* | "Every decision is traceable: what came in, what the system predicted, which precedents it used, and what the analyst decided." | Pre-cached ticket detail view |
+| 5 | 2:30-3:00 | Wrap-up slide: architecture, corpus size, honest status. | "Helios: classify, deflect, resolve, and trace — grounded in 200 historical incidents." | Summary slide |
 
-## Numbers to say out loud
+## Numbers to say out loud (verified — quote these)
 
-- **Classification Accuracy:** 94.2% on curated evaluation benchmark (FR-01).
-- **Deflection Potential:** ~28-32% of tier-1 repetitive tickets deflected pre-submission (FR-02).
-- **Latency per RAG Recommendation:** < 1.8 seconds with structured output caching.
-- **Dataset Size:** 40 curated enterprise IT tickets + 10 approved ITIL knowledge articles across 5 core categories.
+- **Corpus:** 200 historical incidents, 5 categories × 40 records, 14 fields per record.
+- **Demo queue:** 12 seeded tickets — 10 open, 2 resolved — derived from the corpus.
+- **App-layer verification:** 6/6 end-to-end checks pass (`python tests/test_smoke.py`).
+- **Subcategory caveat:** subcategory is constant within each category in this corpus, so it is *not* a
+  meaningful accuracy win — say "category accuracy", never "taxonomy accuracy".
+
+## Numbers you may NOT quote yet (unmeasured)
+
+Do not put these on a slide until the RAG lane is wired and an evaluation run exists:
+
+- Classification accuracy % and deflection % — measure on a held-out slice, record the method.
+- RAG latency per recommendation and cost per run.
+- Any "MTTR reduction" claim — there is no telemetry to support one.
 
 ## Setup checklist before walking up
 
-- [ ] FastAPI backend running on `localhost:8000` with Swagger docs open at `/docs`
-- [ ] React frontend running on `localhost:5173`
-- [ ] Seeded data freshly reset (`python -m app.seed`)
-- [ ] Backup video open in media player, playing off disk
-- [ ] Presenter screen resolution set and browser zoom at 110%
+- [ ] `python seed_db.py` run, then `streamlit run app.py` — app open at `http://localhost:8501`
+- [ ] Persona left on **Admin** with the queue visible
+- [ ] Wi-Fi on (RAG beats need the API) and key present in `.env`
+- [ ] Backup video open in a media player, playing off disk
+- [ ] Browser zoom 110%, terminal hidden
+
+## Known gaps to state honestly if asked
+
+- `rag_service.py` (classification, hybrid retrieval, playbook synthesis) is built separately and may be absent — the app then shows a manual-triage banner and still works end to end.
+- No auth, two personas via a selector — a deliberate scope decision.
+- SQLite is local-only; nothing is deployed yet.

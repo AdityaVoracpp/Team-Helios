@@ -236,7 +236,7 @@ Implement a single, self-contained Python file `rag_service.py` that loads histo
    - Real-time Deflection Radar: calls `rag_service.find_similar_and_deflect(...)`. Shows matching resolved issue + workaround.
    - Buttons: *"This Solved My Problem"* (deflects ticket) vs. *"Submit Incident Anyway"* (inserts into `tickets` table).
 3. **If Persona == `Admin (Support Workbench)`**:
-   - KPI metric cards: Total Tickets, 94% Auto-Accuracy, 28% Deflection Rate, Open Queue.
+   - KPI metric cards: Total Tickets, Open Queue, Deflection Rate, Useful-Feedback Share — all computed live from SQLite via `database.get_stats()`. No hardcoded percentages anywhere in the UI.
    - Incident Queue with faceted filters: Category, Priority, Status, Assignment Group.
    - Selected ticket details + **AI Resolution Assistant**:
      - Calls `rag_service.recommend_resolution(...)`.
