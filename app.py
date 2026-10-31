@@ -182,10 +182,27 @@ def _flash() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# User persona — intake, analysis, deflection
+# User persona — two-step intake: describe, then review auto-filled fields
 # --------------------------------------------------------------------------- #
-def _analysis_payload() -> dict[str, Any] | None:
-    return st.session_state.get("intake_payload")
+_REVIEW_KEYS = (
+    "review_category",
+    "review_subcategory",
+    "review_priority",
+    "review_group",
+    "review_service",
+    "_review_group_for",
+)
+
+
+def _clear_review_widgets() -> None:
+    for key in _REVIEW_KEYS:
+        st.session_state.pop(key, None)
+
+
+def _reset_intake() -> None:
+    st.session_state.pop("intake_payload", None)
+    st.session_state["intake_step"] = "details"
+    _clear_review_widgets()
 
 
 def _run_analysis(payload: dict[str, Any]) -> dict[str, Any]:
@@ -223,34 +240,87 @@ def _run_analysis(payload: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _resolve_classification(payload: dict[str, Any], analysis: dict[str, Any]) -> tuple[str, str, str, str]:
-    """Pick the effective (category, subcategory, priority, group) for the ticket."""
+def _suggestions(analysis: dict[str, Any]) -> dict[str, str]:
+    """Map a classification result onto the fields the review step pre-fills."""
+    taxonomy = load_taxonomy()
     classification = analysis.get("classification") or {}
-    raw_category = classification.get("category") or payload.get("manual_category") or "Unclassified"
+
+    raw_category = classification.get("category") or ""
     category = RAG_TO_DATASET_CATEGORY.get(raw_category, raw_category)
-    subcategory = classification.get("subcategory") or ""
-    raw_priority = classification.get("priority") or payload.get("manual_priority") or "P3 - Medium"
+    if category not in taxonomy["categories"]:
+        category = "Unclassified"
+
+    raw_priority = classification.get("priority") or ""
     priority = PRIORITY_LABEL_BY_CODE.get(raw_priority, raw_priority)
-    group = load_taxonomy()["group_by_category"].get(category, "Service Desk")
-    return category, subcategory, priority, group
+    if priority not in PRIORITIES:
+        priority = "P3 - Medium"
+
+    return {
+        "category": category,
+        "subcategory": classification.get("subcategory") or "",
+        "priority": priority,
+        "group": taxonomy["group_by_category"].get(category, "Service Desk"),
+        "service": "",
+    }
 
 
-def _save_ticket(payload: dict[str, Any], analysis: dict[str, Any], *, deflect: bool, similar: dict | None) -> str:
-    category, subcategory, priority, group = _resolve_classification(payload, analysis)
+@st.cache_data(show_spinner=False)
+def _service_by_ticket_id() -> dict[str, str]:
+    """Lookup of ``ticket id -> affected service`` from the historical corpus."""
+    try:
+        records = json.loads(DATASET_PATH.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 - suggestion is a convenience, not a dependency
+        return {}
+    return {r.get("id", ""): r.get("affected_service", "") for r in records}
+
+
+def _suggest_service(payload: dict[str, Any], analysis: dict[str, Any]) -> str:
+    """Prefer what the employee typed, else the service named by the best precedent."""
+    if payload.get("affected_service"):
+        return payload["affected_service"]
+    similar = (analysis.get("deflection") or {}).get("similar_tickets") or []
+    lookup = _service_by_ticket_id()
+    for item in similar:
+        service = lookup.get(item.get("id", ""), "")
+        if service:
+            return service
+    return ""
+
+
+def _seed_review_widgets(payload: dict[str, Any], analysis: dict[str, Any]) -> None:
+    """(Re)initialise the editable fields from the latest suggestion."""
+    suggestion = _suggestions(analysis)
+    st.session_state["review_category"] = suggestion["category"]
+    st.session_state["review_subcategory"] = suggestion["subcategory"]
+    st.session_state["review_priority"] = suggestion["priority"]
+    st.session_state["review_group"] = suggestion["group"]
+    st.session_state["review_service"] = _suggest_service(payload, analysis)
+    st.session_state["_review_group_for"] = suggestion["category"]
+
+
+def _save_ticket(
+    payload: dict[str, Any],
+    analysis: dict[str, Any],
+    values: dict[str, str],
+    *,
+    deflect: bool,
+    similar: dict | None,
+) -> str:
     notes = ""
     steps: list[str] = []
     if deflect and similar:
         notes = similar.get("resolution_summary") or similar.get("quick_workaround") or ""
         steps = [similar["quick_workaround"]] if similar.get("quick_workaround") else []
 
+    suggestion = _suggestions(analysis)
     ticket_id = db.create_ticket(
         payload["title"],
         payload["description"],
-        category=category,
-        subcategory=subcategory,
-        priority=priority,
-        affected_service=payload["affected_service"],
-        assignment_group=group,
+        category=values["category"],
+        subcategory=values["subcategory"],
+        priority=values["priority"],
+        affected_service=values["affected_service"],
+        assignment_group=values["assignment_group"],
         status="Deflected" if deflect else "Open",
         action_steps=steps,
         resolution_notes=notes,
@@ -258,74 +328,107 @@ def _save_ticket(payload: dict[str, Any], analysis: dict[str, Any], *, deflect: 
             "source": "employee_intake",
             "agent_mode": analysis["mode"],
             "classification": analysis.get("classification"),
+            "suggested": suggestion,
             "persisted_taxonomy": {
-                "category": category,
-                "subcategory": subcategory,
-                "priority": priority,
-                "assignment_group": group,
+                "category": values["category"],
+                "subcategory": values["subcategory"],
+                "priority": values["priority"],
+                "assignment_group": values["assignment_group"],
+            },
+            "overrides": {
+                field: values[field]
+                for field in ("category", "subcategory", "priority", "assignment_group", "affected_service")
+                if values[field] != suggestion[{"assignment_group": "group", "affected_service": "service"}.get(field, field)]
             },
             "deflection": analysis.get("deflection"),
             "error": analysis.get("error"),
             "generated_at": analysis["generated_at"],
         },
     )
-    st.session_state.pop("intake_payload", None)
     st.session_state["form_version"] = st.session_state.get("form_version", 0) + 1
     return ticket_id
 
 
-def user_view() -> None:
-    categories = load_taxonomy()["categories"]
-    st.subheader("Report an issue")
-    st.caption(
-        "Describe the problem in your own words. The assistant checks it against past incidents "
-        "before you submit."
-    )
+def _radar(similar_tickets: list[dict[str, Any]]) -> None:
+    st.markdown("#### 🔎 Deflection radar")
+    st.caption("Resolved incidents that look like yours — try these before raising a ticket.")
+    for item in similar_tickets:
+        score = item.get("similarity_score", 0.0)
+        with st.container(border=True):
+            cols = st.columns([4, 1])
+            cols[0].markdown(f"**{item.get('title', 'Untitled')}**")
+            cols[1].markdown(f"`{score * 100:.0f}% match`")
+            if item.get("quick_workaround"):
+                st.markdown(f"**Try this first:** {item['quick_workaround']}")
+            st.caption(
+                f"{item.get('id', '—')} · {item.get('status', '—')} · "
+                f"{item.get('resolution_summary', '')[:180]}"
+            )
 
-    version = st.session_state.get("form_version", 0)
-    with st.form(f"intake_form_{version}", clear_on_submit=False):
-        title = st.text_input("Short description", placeholder="Laptop cannot reach internal sites over VPN")
-        description = st.text_area(
-            "What exactly is happening?",
-            placeholder="AnyConnect connects but times out with error 504. Browser shows no internal pages.",
-            height=110,
+
+def _step_details() -> None:
+    payload = st.session_state.get("intake_payload") or {}
+    with st.form("intake_details_form"):
+        title = st.text_input(
+            "Short description",
+            value=payload.get("title", ""),
+            placeholder="Laptop cannot reach internal sites over VPN",
         )
-        affected_service = st.text_input("Affected service (optional)", placeholder="Cisco AnyConnect")
-        col_a, col_b = st.columns(2)
-        with col_a:
-            manual_category = st.selectbox("Category (leave blank to let the assistant decide)", [""] + categories)
-        with col_b:
-            manual_priority = st.selectbox("Priority (optional)", [""] + PRIORITIES)
-        analyze = st.form_submit_button("Analyze Issue", type="primary", width="stretch")
+        description = st.text_area(
+            "Detailed description",
+            value=payload.get("description", ""),
+            placeholder="AnyConnect connects but times out with error 504. Browser shows no internal pages.",
+            height=150,
+        )
+        affected_service = st.text_input(
+            "Affected service (optional)",
+            value=payload.get("affected_service", ""),
+            placeholder="Cisco AnyConnect",
+        )
+        next_clicked = st.form_submit_button(
+            "Next — auto-fill from history →", type="primary", width="stretch"
+        )
 
-    if analyze:
-        if not title.strip() or not description.strip():
-            st.error("A short description and details are both required.")
-        else:
-            payload = {
-                "title": title.strip(),
-                "description": description.strip(),
-                "affected_service": affected_service.strip(),
-                "manual_category": manual_category,
-                "manual_priority": manual_priority,
-            }
-            with st.spinner("Checking against 200 historical incidents…"):
-                analysis = _run_analysis(payload)
-            payload["analysis"] = analysis
-            st.session_state["intake_payload"] = payload
+    if not next_clicked:
+        return
+    if not title.strip() or not description.strip():
+        st.error("Both the short description and the detailed description are required.")
+        return
 
-    payload = _analysis_payload()
+    new_payload: dict[str, Any] = {
+        "title": title.strip(),
+        "description": description.strip(),
+        "affected_service": affected_service.strip(),
+    }
+    with st.spinner("Matching against 200 historical incidents…"):
+        new_payload["analysis"] = _run_analysis(new_payload)
+
+    st.session_state["intake_payload"] = new_payload
+    _seed_review_widgets(new_payload, new_payload["analysis"])
+    st.session_state["intake_step"] = "review"
+    st.rerun()
+
+
+def _step_review() -> None:
+    payload = st.session_state.get("intake_payload")
     if not payload:
+        _reset_intake()
         return
 
     analysis = payload["analysis"]
     classification = analysis.get("classification")
-    st.divider()
+
+    with st.container(border=True):
+        st.markdown(f"**{payload['title']}**")
+        description = payload["description"]
+        st.caption(description[:280] + ("…" if len(description) > 280 else ""))
+        if payload["affected_service"]:
+            st.caption(f"Affected service: {payload['affected_service']}")
 
     if analysis["mode"] == "manual":
         st.warning(
-            "**AI analysis is unavailable.** This ticket can still be entered with the selected "
-            "manual values and queued for an analyst.",
+            "**AI analysis is unavailable.** Nothing was auto-filled — set the fields below "
+            "manually and the ticket will still be queued for an analyst.",
             icon="⚠️",
         )
     if analysis.get("error"):
@@ -333,47 +436,95 @@ def user_view() -> None:
 
     if classification:
         c1, c2, c3 = st.columns(3)
+        raw_priority = classification["priority"]
         c1.metric("Suggested category", classification["category"])
-        c2.metric("Suggested priority", PRIORITY_LABEL_BY_CODE.get(classification["priority"], classification["priority"]))
+        c2.metric("Suggested priority", PRIORITY_LABEL_BY_CODE.get(raw_priority, raw_priority))
         c3.metric("Confidence", f"{classification['confidence_score'] * 100:.0f}%")
         st.caption(f"**Why:** {classification.get('reasoning', '—')}")
 
+    st.markdown("#### Review the auto-filled fields")
+    st.caption("Prefilled from the closest historical incidents. Overwrite anything that looks wrong.")
+
+    taxonomy = load_taxonomy()
+    cat_options = ["Unclassified", *taxonomy["categories"]]
+    if st.session_state.get("review_category") not in cat_options:
+        st.session_state["review_category"] = cat_options[0]
+
+    row1 = st.columns(2)
+    category = row1[0].selectbox("Category", cat_options, key="review_category")
+    subcategory = row1[1].text_input("Subcategory", key="review_subcategory", placeholder="e.g. VPN Client")
+
+    service = st.text_input(
+        "Affected service", key="review_service", placeholder="e.g. Cisco AnyConnect"
+    )
+
+    row2 = st.columns(2)
+    priority = row2[0].selectbox("Priority", PRIORITIES, key="review_priority")
+
+    # Assignment group follows the category until the user picks one explicitly.
+    default_group = taxonomy["group_by_category"].get(category, "Service Desk")
+    if st.session_state.get("_review_group_for") != category:
+        st.session_state["_review_group_for"] = category
+        st.session_state["review_group"] = (
+            default_group if default_group in taxonomy["groups"] else taxonomy["groups"][0]
+        )
+    group = row2[1].selectbox("Assignment group", taxonomy["groups"], key="review_group")
+
     similar_tickets = (analysis.get("deflection") or {}).get("similar_tickets") or []
     if similar_tickets:
-        st.markdown("#### 🔎 Deflection radar")
-        st.caption("Resolved incidents that look like yours — try these before raising a ticket.")
-        for item in similar_tickets:
-            score = item.get("similarity_score", 0.0)
-            with st.container(border=True):
-                cols = st.columns([4, 1])
-                cols[0].markdown(f"**{item.get('title', 'Untitled')}**")
-                cols[1].markdown(f"`{score * 100:.0f}% match`")
-                if item.get("quick_workaround"):
-                    st.markdown(f"**Try this first:** {item['quick_workaround']}")
-                st.caption(
-                    f"{item.get('id', '—')} · {item.get('status', '—')} · "
-                    f"{item.get('resolution_summary', '')[:180]}"
-                )
+        _radar(similar_tickets)
 
-    st.markdown("#### Next step")
-    b1, b2 = st.columns(2)
+    st.divider()
+    b_back, b_deflect, b_submit = st.columns(3)
+    back = b_back.button("← Edit details", width="stretch")
     deflection_suggested = bool((analysis.get("deflection") or {}).get("deflection_suggested"))
-    deflect = b1.button(
+    deflect = b_deflect.button(
         "✅ This solved my problem",
         type="primary",
         width="stretch",
         disabled=not similar_tickets or not deflection_suggested,
     )
-    submit = b2.button("📨 Submit incident anyway", width="stretch")
+    submit = b_submit.button("📨 Submit incident anyway", width="stretch")
 
-    if deflect and similar_tickets:
-        ticket_id = _save_ticket(payload, analysis, deflect=True, similar=similar_tickets[0])
-        st.session_state["flash"] = f"Deflected — closed {ticket_id} from self-service. No incident raised."
+    values = {
+        "category": category,
+        "subcategory": subcategory.strip(),
+        "priority": priority,
+        "assignment_group": group,
+        "affected_service": service.strip(),
+    }
+
+    if back:
+        st.session_state["intake_step"] = "details"
         st.rerun()
     if submit:
-        ticket_id = _save_ticket(payload, analysis, deflect=False, similar=None)
+        ticket_id = _save_ticket(payload, analysis, values, deflect=False, similar=None)
         st.session_state["flash"] = f"Incident {ticket_id} created and queued for an analyst."
+        _reset_intake()
         st.rerun()
+    if deflect and similar_tickets:
+        ticket_id = _save_ticket(payload, analysis, values, deflect=True, similar=similar_tickets[0])
+        st.session_state["flash"] = f"Deflected — closed {ticket_id} from self-service. No incident raised."
+        _reset_intake()
+        st.rerun()
+
+
+def user_view() -> None:
+    step = st.session_state.get("intake_step", "details")
+    st.subheader("Report an issue")
+    st.caption(
+        "Step 1: describe the problem. Step 2: we pre-fill the triage fields from 200 historical "
+        "incidents — you can change any of them."
+    )
+    st.markdown(
+        _pill("1 · Describe", "ok" if step == "details" else "")
+        + _pill("2 · Review & submit", "ok" if step == "review" else ""),
+        unsafe_allow_html=True,
+    )
+    if step == "details":
+        _step_details()
+    else:
+        _step_review()
 
 
 # --------------------------------------------------------------------------- #

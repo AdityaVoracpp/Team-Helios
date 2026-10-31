@@ -47,15 +47,18 @@ def main() -> int:
     assert not at.exception, f"app crashed on first run: {list(at.exception)}"
     print("OK  app boots with no exception")
 
-    # ---- Employee Center: intake -------------------------------------------------
+    # ---- Employee Center: step 1 (describe) -------------------------------------
     at.text_input[0].set_value("VPN drops with Error 504")
     at.text_area[0].set_value("AnyConnect handshake fails with 504 from home; internal sites unreachable")
     at.text_input[1].set_value("Cisco AnyConnect")
-    at.selectbox[0].set_value("Network & Connectivity")
-    at.selectbox[1].set_value("P2 - High")
-    _button(at, "Analyze Issue").click().run()
+    _button(at, "Next").click().run()
     assert not at.exception, list(at.exception)
     assert at.warning, "expected the 'AI service not connected' banner in manual mode"
+    assert [s.label for s in at.selectbox][:2] == ["Category", "Priority"], [s.label for s in at.selectbox]
+
+    # ---- step 2 (review auto-filled fields, override manually) -------------------
+    at.selectbox[0].set_value("Network & Connectivity")
+    at.selectbox[1].set_value("P2 - High")
     _button(at, "Submit incident anyway").click().run()
     assert not at.exception, list(at.exception)
 

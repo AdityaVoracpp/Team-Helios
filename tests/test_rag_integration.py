@@ -110,7 +110,7 @@ def main() -> int:
         at.text_input[0].set_value("VPN drops with Error 504")
         at.text_area[0].set_value("AnyConnect handshake fails with 504 from home")
         at.text_input[1].set_value("Cisco AnyConnect")
-        _button(at, "Analyze Issue").click().run()
+        _button(at, "Next").click().run()
         assert not at.exception, [e.message for e in at.exception]
         metrics = {m.label: m.value for m in at.metric}
         assert metrics.get("Suggested category") == "Network & Connectivity", metrics
@@ -154,6 +154,25 @@ def main() -> int:
         assert audit["agent_mode"] == "ai", audit
         assert audit["classification"]["category"] == "Network & Connectivity", audit
         print("OK  audit trace stores the AI classification payload")
+
+        # ---- overrides survive: user disagrees with the suggestion ----------
+        at.radio[0].set_value("User (Employee Center)").run()
+        at.text_input[0].set_value("Office printer shows offline")
+        at.text_area[0].set_value("Shared printer went offline after a driver update")
+        at.text_input[1].set_value("")
+        _button(at, "Next").click().run()
+        at.selectbox[0].set_value("Hardware & Endpoints").run()
+        group_box = [s for s in at.selectbox if s.label == "Assignment group"][0]
+        assert group_box.value == "Desktop & End User Support", group_box.value
+        _button(at, "Submit incident anyway").click().run()
+        assert not at.exception, [e.message for e in at.exception]
+
+        overridden = [t for t in db.get_all_tickets() if t["title"] == "Office printer shows offline"][0]
+        assert overridden["category"] == "Hardware & Endpoints", overridden["category"]
+        assert overridden["assignment_group"] == "Desktop & End User Support", overridden["assignment_group"]
+        assert "category" in overridden["audit_data"]["overrides"], overridden["audit_data"]
+        assert overridden["audit_data"]["suggested"]["category"] == "Network & Connectivity"
+        print("OK  manual override persisted and recorded alongside the suggestion")
 
     print("\nAll RAG-integration checks passed (LLM stubbed, no network).")
     return 0

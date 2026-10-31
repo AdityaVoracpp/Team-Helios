@@ -26,7 +26,7 @@ Manual categorization and duplicate search consumes over 60% of tier-1 support h
 Helios ITSM Assist provides a dual-persona ServiceNow-inspired experience tailored for both end-users and IT support personnel:
 
 ### 1. Employee Center (`User` Persona — Self-Service)
-- **Intake with Live AI Auto-fill (FR-01):** As employees describe their issue, the AI automatically suggests Category, Subcategory, Urgency, and Priority with an explicit confidence score.
+- **Two-step intake (FR-01):** Step 1 collects the short and detailed description. Step 2 runs the issue against the historical corpus and **pre-fills** category, subcategory, priority, assignment group and affected service, with an explicit confidence score and the model's reasoning. Every pre-filled field stays editable — the employee can override any of it before submitting, and the audit trace records what was suggested versus what was kept.
 - **Contextual Search & Pre-Submission Deflection (FR-02):** Before submission, a real-time radar scans historical incidents and active major outages. If a verified fix or workaround exists, it is displayed immediately. If the user clicks *"This Solved My Problem"*, the ticket is deflected pre-submission, saving IT capacity.
 
 ### 2. Support Operations Workbench (`Admin` Persona — Analyst & Triage)
